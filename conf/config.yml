@@ -1,0 +1,10 @@
+---
+ylzt.urls:
+  script_name: ylzt.js
+  output_file: ylzt.txt
+  enable: false
+bianlian_wise_netease.urls:
+  script_name:
+    - bianlian_wise_netease.pre.js
+    - bianlian_wise_netease.js
+  output_file: bianlian_wise_netease.txt

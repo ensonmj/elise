@@ -1,0 +1,20 @@
+---
+ylzt.urls:
+  script_name: ylzt.js
+  output_file: ylzt.txt
+  ignore: true
+bianlian_wise_netease.urls:
+  script_name:
+    - bianlian_wise_netease.pre.js
+    - bianlian_wise_netease.js
+  output_file: bianlian_wise_netease.txt
+  ignore: true
+bianlian_pc_netease.urls:
+  script_name:
+    - bianlian_pc_netease.pre.js
+    - bianlian_pc_netease.js
+  output_file: bianlian_pc_netease.txt
+  ignore: true
+wise_trade_83.urls:
+  script_name: wise_trade_83.js
+  output_file: wise_trade_83.txt

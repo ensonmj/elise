@@ -52,6 +52,7 @@ var (
 	fLogDir    string
 )
 
+// HamalCmd is the top entrance of hamal
 var HamalCmd = &cobra.Command{
 	Use:   "hamal",
 	Short: "Hamal parse webpage based on scripts.",
@@ -72,13 +73,13 @@ var HamalCmd = &cobra.Command{
 			log.WithFields(log.Fields{
 				"dataDir": fDataDir,
 			}).Fatal("No script dir")
-			panic(err)
+			return err
 		}
 		if _, err := os.Stat(fScriptDir); os.IsNotExist(err) {
 			log.WithFields(log.Fields{
 				"scriptDir": fScriptDir,
 			}).Fatal("No script dir")
-			panic(err)
+			return err
 		}
 		if _, err := os.Stat(fOutputDir); os.IsNotExist(err) {
 			os.Mkdir(fOutputDir, os.ModePerm)
@@ -94,50 +95,74 @@ var HamalCmd = &cobra.Command{
 func mainFunc() error {
 	done := new(sync.WaitGroup)
 	infoChan := make(chan URLInfo, fParallel)
+	retryNum := fParallel/2 + 1
+	retryChan := make(chan URLInfo, retryNum)
 	for i := 0; i < fParallel; i++ {
-		go func(index int) {
-		RESTART:
-			driver := agouti.PhantomJS()
-			if err := driver.Start(); err != nil {
-				log.WithFields(log.Fields{
-					"index": index,
-				}).Fatalf("Failed to start driver:%v", err)
-			}
-
-			for {
-				select {
-				case info, ok := <-infoChan:
-					if !ok {
-						log.WithFields(log.Fields{
-							"index": index,
-						}).Debug("Worker exit")
-						driver.Stop()
-						return
-					}
-					// TODO: collect failed url and retry later
-					err := parseURL(index, info, driver, done)
-					if err != nil {
-						// sometimes phantomjs crashed or timeout error
-						// we can't differentiate cause of error
-						driver.Stop()
-						goto RESTART
-					}
-				}
-			}
-		}(i)
+		go worker(i, infoChan, retryChan, done)
+	}
+	for i := 0; i < retryNum; i++ {
+		go worker(i, retryChan, nil, done)
 	}
 
 	filepath.Walk(fDataDir, walkFile(infoChan, done))
 
 	done.Wait()
 	close(infoChan)
+	close(retryChan)
 
 	return nil
 }
 
-func parseURL(index int, info URLInfo, driver *agouti.WebDriver, done *sync.WaitGroup) error {
-	defer done.Done()
+func worker(index int, infoChan <-chan URLInfo, retryChan chan<- URLInfo, done *sync.WaitGroup) {
+	driver := agouti.PhantomJS()
+	if err := driver.Start(); err != nil {
+		log.WithFields(log.Fields{
+			"index": index,
+		}).Fatalf("Failed to start driver:%v", err)
+		return
+	}
+	defer driver.Stop()
 
+	for {
+		select {
+		case info, ok := <-infoChan:
+			if !ok {
+				log.WithFields(log.Fields{
+					"index": index,
+				}).Debug("Worker exit")
+				return
+			}
+			err := parseURL(index, info, driver)
+			if err != nil {
+				// sometimes phantomjs crashed or navigate timeout
+				// we can't differentiate cause of errors
+				// so we just restart the worker and push the *info* to retry queue
+				go worker(index, infoChan, retryChan, done)
+
+				// we just retry once
+				if retryChan != nil {
+					log.WithFields(log.Fields{
+						"index": index,
+						"info":  info,
+					}).Warn("Failed to parse, will retry later")
+					go func(info URLInfo) {
+						time.Sleep(10 * time.Second)
+						retryChan <- info
+					}(info)
+				} else {
+					// failed to retry, just mark completed
+					log.WithField("url", info.URL).Info("Failed to retry")
+					done.Done()
+				}
+
+				return
+			}
+			log.WithField("url", info.URL).Info("Success to parse")
+		}
+	}
+}
+
+func parseURL(index int, info URLInfo, driver *agouti.WebDriver) error {
 	page, err := driver.NewPage(agouti.Browser("phantomjs"))
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -252,11 +277,11 @@ func walkFile(infoChan chan<- URLInfo, done *sync.WaitGroup) func(path string, f
 			return nil
 		}
 
-		res_path := fOutputDir + "/" + conf["output_file"].(string)
-		file, err := os.Create(res_path)
+		resPath := fOutputDir + "/" + conf["output_file"].(string)
+		file, err := os.Create(resPath)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"res_path": res_path,
+				"res_path": resPath,
 				"err":      err,
 			}).Warn("Failed to create output file")
 			return nil
@@ -264,23 +289,23 @@ func walkFile(infoChan chan<- URLInfo, done *sync.WaitGroup) func(path string, f
 		info.Ofile = file
 
 		// we can have multi scripts for one page
-		var script_path []string
+		var scriptPath []string
 		switch scripts := conf["script_name"].(type) {
 		case string:
-			script_path = append(script_path, fScriptDir+"/"+scripts)
+			scriptPath = append(scriptPath, fScriptDir+"/"+scripts)
 		case []interface{}:
 			for _, v := range scripts {
-				script_path = append(script_path, fScriptDir+"/"+v.(string))
+				scriptPath = append(scriptPath, fScriptDir+"/"+v.(string))
 			}
 		default:
 			log.WithFields(log.Fields{
-				"script_path": scripts,
+				"script_name": scripts,
 			}).Warn("Conf[script_name] is not string or array of string")
 			return nil
 		}
 
 		// load scripts
-		for _, v := range script_path {
+		for _, v := range scriptPath {
 			data, err := ioutil.ReadFile(v)
 			if err != nil {
 				log.WithFields(log.Fields{

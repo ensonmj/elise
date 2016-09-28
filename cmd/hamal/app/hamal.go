@@ -15,6 +15,7 @@ import (
 	"github.com/sclevine/agouti"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/sync/errgroup"
 )
 
 func init() {
@@ -93,73 +94,108 @@ var HamalCmd = &cobra.Command{
 }
 
 func mainFunc() error {
+	var eg errgroup.Group
+
 	done := new(sync.WaitGroup)
 	infoChan := make(chan URLInfo, fParallel)
 	retryNum := fParallel/2 + 1
 	retryChan := make(chan URLInfo, retryNum)
 	for i := 0; i < fParallel; i++ {
-		go worker(i, infoChan, retryChan, done)
+		index := i
+		eg.Go(func() error {
+		RESTART:
+			driver := agouti.PhantomJS()
+			if err := driver.Start(); err != nil {
+				log.WithFields(log.Fields{
+					"index": index,
+					"err":   err,
+				}).Fatalf("Failed to start driver:%v", err)
+				return err
+			}
+			log.WithField("index", index).Debug("Success to start worker")
+
+			for {
+				select {
+				case info, ok := <-infoChan:
+					if !ok {
+						log.WithField("index", index).Debug("Worker exit")
+						driver.Stop()
+						return nil
+					}
+
+					err := parseURL(index, info, driver)
+					if err != nil {
+						// sometimes phantomjs crashed or just navigate timeout
+						// we can't differentiate cause of errors
+						// so we just restart the worker and push the *info* to retry queue
+						// we just retry once
+
+						log.WithFields(log.Fields{
+							"index": index,
+							"info":  info,
+						}).Warn("Failed to parse, will retry later")
+						go func(info URLInfo) {
+							time.Sleep(10 * time.Second)
+							retryChan <- info
+						}(info)
+
+						goto RESTART
+					}
+
+					log.WithField("url", info.URL).Info("Success to parse")
+					done.Done()
+				}
+			}
+		})
 	}
 	for i := 0; i < retryNum; i++ {
-		go worker(i, retryChan, nil, done)
+		index := i
+		eg.Go(func() error {
+		RESTART:
+			driver := agouti.PhantomJS()
+			if err := driver.Start(); err != nil {
+				log.WithFields(log.Fields{
+					"index": index,
+					"err":   err,
+				}).Fatalf("Failed to start driver:%v", err)
+				return err
+			}
+			log.WithField("index", index).Debug("Success to start retry worker")
+
+			for {
+				select {
+				case info, ok := <-retryChan:
+					if !ok {
+						log.WithField("index", index).Debug("Retry worker exit")
+						driver.Stop()
+						return nil
+					}
+					err := parseURL(index, info, driver)
+					if err != nil {
+						// failed to retry, just mark completed
+						log.WithField("url", info.URL).Info("Failed to retry")
+						done.Done()
+
+						// we need restart retry worker
+						goto RESTART
+					}
+					log.WithField("url", info.URL).Info("Success to parse")
+					done.Done()
+				}
+			}
+		})
 	}
 
+	log.WithField("dataDir", fDataDir).Debug("Start to traversal data files")
 	filepath.Walk(fDataDir, walkFile(infoChan, done))
 
 	done.Wait()
 	close(infoChan)
 	close(retryChan)
+	eg.Wait()
+	log.Debug("Finish all tasks")
 
 	return nil
-}
-
-func worker(index int, infoChan <-chan URLInfo, retryChan chan<- URLInfo, done *sync.WaitGroup) {
-	driver := agouti.PhantomJS()
-	if err := driver.Start(); err != nil {
-		log.WithFields(log.Fields{
-			"index": index,
-		}).Fatalf("Failed to start driver:%v", err)
-		return
-	}
-	defer driver.Stop()
-
-	for {
-		select {
-		case info, ok := <-infoChan:
-			if !ok {
-				log.WithFields(log.Fields{
-					"index": index,
-				}).Debug("Worker exit")
-				return
-			}
-			err := parseURL(index, info, driver)
-			if err != nil {
-				// sometimes phantomjs crashed or navigate timeout
-				// we can't differentiate cause of errors
-				// so we just restart the worker and push the *info* to retry queue
-				go worker(index, infoChan, retryChan, done)
-
-				// we just retry once
-				if retryChan != nil {
-					log.WithFields(log.Fields{
-						"index": index,
-						"info":  info,
-					}).Warn("Failed to parse, will retry later")
-					go func(info URLInfo) {
-						time.Sleep(10 * time.Second)
-						retryChan <- info
-					}(info)
-				} else {
-					// failed to retry, just mark completed
-					log.WithField("url", info.URL).Info("Failed to retry")
-					done.Done()
-				}
-
-				return
-			}
-			log.WithField("url", info.URL).Info("Success to parse")
-		}
-	}
 }
 
 func parseURL(index int, info URLInfo, driver *agouti.WebDriver) error {

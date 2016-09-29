@@ -18,32 +18,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func init() {
-	HamalCmd.AddCommand(versionCmd)
-
-	pflags := HamalCmd.PersistentFlags()
-	pflags.IntVarP(&fVerbose, "verbose", "v", 4, "log level: 0~5, 5 for debug detail")
-	viper.BindPFlag("verbose", pflags.Lookup("verbose"))
-
-	flags := HamalCmd.Flags()
-	flags.IntVarP(&fParallel, "parallel", "p", 10, "max number of parallel exector")
-	flags.StringVar(&fDataDir, "dataDir", "./data", "dir for storage url files")
-	flags.StringVar(&fScriptDir, "scriptDir", "./script", "dir for storage scripts")
-	flags.StringVar(&fOutputDir, "outputDir", "./output", "dir for storage parse result files")
-	flags.StringVar(&fLogDir, "logDir", "./log", "dir for storage log")
-	viper.BindPFlag("parallel", flags.Lookup("parallel"))
-	viper.BindPFlag("dataDir", flags.Lookup("dataDir"))
-	viper.BindPFlag("scriptDir", flags.Lookup("scriptDir"))
-	viper.BindPFlag("outputDir", flags.Lookup("outputDir"))
-	viper.BindPFlag("logDir", flags.Lookup("logDir"))
-}
-
-type URLInfo struct {
-	URL     string
-	Ofile   *os.File
-	JsFuncs []string
-}
-
 var (
 	fParallel  int
 	fVerbose   int
@@ -53,13 +27,38 @@ var (
 	fLogDir    string
 )
 
+func init() {
+	HamalCmd.AddCommand(versionCmd)
+	HamalCmd.AddCommand(picCmd)
+
+	pflags := HamalCmd.PersistentFlags()
+	pflags.IntVarP(&fParallel, "parallel", "p", 10, "max number of parallel exector")
+	pflags.IntVarP(&fVerbose, "verbose", "v", 4, "log level: 0~5, 5 for debug detail")
+	pflags.StringVar(&fLogDir, "logDir", "./log", "dir for storage log")
+	viper.BindPFlag("parallel", pflags.Lookup("parallel"))
+	viper.BindPFlag("verbose", pflags.Lookup("verbose"))
+	viper.BindPFlag("logDir", pflags.Lookup("logDir"))
+
+	flags := HamalCmd.Flags()
+	flags.StringVar(&fDataDir, "dataDir", "./data", "dir for storage url files")
+	flags.StringVar(&fScriptDir, "scriptDir", "./script", "dir for storage scripts")
+	flags.StringVar(&fOutputDir, "outputDir", "./output", "dir for storage parse result files")
+	viper.BindPFlag("dataDir", flags.Lookup("dataDir"))
+	viper.BindPFlag("scriptDir", flags.Lookup("scriptDir"))
+	viper.BindPFlag("outputDir", flags.Lookup("outputDir"))
+}
+
+type URLInfo struct {
+	URL     string
+	Ofile   *os.File
+	JsFuncs []string
+}
+
 // HamalCmd is the top entrance of hamal
 var HamalCmd = &cobra.Command{
 	Use:   "hamal",
 	Short: "Hamal parse webpage based on scripts.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		log.SetLevel(log.Level(fVerbose))
-
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if _, err := os.Stat(fLogDir); os.IsNotExist(err) {
 			os.Mkdir(fLogDir, os.ModePerm)
 		}
@@ -69,7 +68,9 @@ var HamalCmd = &cobra.Command{
 			log.WarnLevel:  fLogDir + "/warn.log",
 			log.FatalLevel: fLogDir + "/fatal.log",
 		}))
-
+		log.SetLevel(log.Level(fVerbose))
+	},
+	RunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := os.Stat(fDataDir); os.IsNotExist(err) {
 			log.WithFields(log.Fields{
 				"dataDir": fDataDir,
@@ -128,8 +129,6 @@ func mainFunc() error {
 						// sometimes phantomjs crashed or just navigate timeout
 						// we can't differentiate cause of errors
 						// so we just restart the worker and push the *info* to retry queue
-						// we just retry once
-
 						log.WithFields(log.Fields{
 							"index": index,
 							"info":  info,
@@ -172,7 +171,7 @@ func mainFunc() error {
 					}
 					err := parseURL(index, info, driver)
 					if err != nil {
-						// failed to retry, just mark completed
+						// failed to retry, no more retry for this url, just mark completed
 						log.WithField("url", info.URL).Info("Failed to retry")
 						done.Done()
 

@@ -1,8 +1,11 @@
 ---
+hamal_common: &HAMALCOMMON
+  dump_html: true
+  script_name: hamal_common.js
 ylzt.urls:
   script_name: ylzt.js
   output_file: ylzt.txt
-  ignore: false
+  ignore: true
 bianlian_wise_netease.urls:
   script_name:
     - bianlian_wise_netease.pre.js
@@ -16,6 +19,4 @@ bianlian_pc_netease.urls:
   output_file: bianlian_pc_netease.txt
   ignore: true
 wise_trade_83.urls:
-  script_name: wise_trade_83.js
-  output_file: wise_trade_83.txt
-  ignore: true
+  <<: *HAMALCOMMON

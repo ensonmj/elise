@@ -2,12 +2,16 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -19,12 +23,14 @@ import (
 )
 
 var (
-	fParallel  int
-	fVerbose   int
-	fDataDir   string
-	fScriptDir string
-	fOutputDir string
-	fLogDir    string
+	fSplitCount int
+	fParallel   int
+	fVerbose    int
+	fDataDir    string
+	fScriptDir  string
+	fOutputDir  string
+	fLogDir     string
+	fFlushLog   bool
 )
 
 func init() {
@@ -35,40 +41,75 @@ func init() {
 	pflags.IntVarP(&fParallel, "parallel", "p", 10, "max number of parallel exector")
 	pflags.IntVarP(&fVerbose, "verbose", "v", 4, "log level: 0~5, 5 for debug detail")
 	pflags.StringVar(&fLogDir, "logDir", "./log", "dir for storage log")
+	pflags.BoolVar(&fFlushLog, "flushLog", false, "flush log dir for debug")
 	viper.BindPFlag("parallel", pflags.Lookup("parallel"))
 	viper.BindPFlag("verbose", pflags.Lookup("verbose"))
 	viper.BindPFlag("logDir", pflags.Lookup("logDir"))
+	viper.BindPFlag("flushLog", pflags.Lookup("flushLog"))
 
 	flags := HamalCmd.Flags()
+	flags.IntVarP(&fSplitCount, "splitCount", "c", 10000, "max line count for one output file")
 	flags.StringVar(&fDataDir, "dataDir", "./data", "dir for storage url files")
 	flags.StringVar(&fScriptDir, "scriptDir", "./script", "dir for storage scripts")
 	flags.StringVar(&fOutputDir, "outputDir", "./output", "dir for storage parse result files")
+	viper.BindPFlag("splitCount", flags.Lookup("splitCount"))
 	viper.BindPFlag("dataDir", flags.Lookup("dataDir"))
 	viper.BindPFlag("scriptDir", flags.Lookup("scriptDir"))
 	viper.BindPFlag("outputDir", flags.Lookup("outputDir"))
 }
 
+type FileInfo struct {
+	Filename string
+	Line     uint64
+	Start    time.Time
+	Done     *sync.WaitGroup // just include parse, exclude write file
+}
+
+type URLRes struct {
+	URL string
+	Res map[string]interface{}
+}
+
 type URLInfo struct {
-	URL     string
-	Ofile   *os.File
-	JsFuncs []string
+	URL      string
+	JsFuncs  []string
+	DumpHTML bool
+	ResChan  chan URLRes
+	FInfo    *FileInfo
 }
 
 // HamalCmd is the top entrance of hamal
 var HamalCmd = &cobra.Command{
 	Use:   "hamal",
 	Short: "Hamal parse webpage based on scripts.",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := os.Stat(fLogDir); os.IsNotExist(err) {
 			os.Mkdir(fLogDir, os.ModePerm)
+		} else if fFlushLog {
+			dir, err := os.Open(fLogDir)
+			if err != nil {
+				return err
+			}
+			defer dir.Close()
+			names, err := dir.Readdirnames(-1)
+			if err != nil {
+				return err
+			}
+			for _, name := range names {
+				err = os.RemoveAll(filepath.Join(fLogDir, name))
+				if err != nil {
+					return err
+				}
+			}
 		}
 		log.AddHook(lfshook.NewHook(lfshook.PathMap{
-			log.DebugLevel: fLogDir + "/debug.log",
-			log.InfoLevel:  fLogDir + "/info.log",
-			log.WarnLevel:  fLogDir + "/warn.log",
-			log.FatalLevel: fLogDir + "/fatal.log",
+			log.DebugLevel: filepath.Join(fLogDir, "debug.log"),
+			log.InfoLevel:  filepath.Join(fLogDir, "info.log"),
+			log.WarnLevel:  filepath.Join(fLogDir, "warn.log"),
+			log.FatalLevel: filepath.Join(fLogDir, "fatal.log"),
 		}))
 		log.SetLevel(log.Level(fVerbose))
+		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := os.Stat(fDataDir); os.IsNotExist(err) {
@@ -95,15 +136,15 @@ var HamalCmd = &cobra.Command{
 }
 
 func mainFunc() error {
-	var eg errgroup.Group
+	var infoeg errgroup.Group
+	var retryeg errgroup.Group
 
-	done := new(sync.WaitGroup)
 	infoChan := make(chan URLInfo, fParallel)
 	retryNum := fParallel/2 + 1
 	retryChan := make(chan URLInfo, retryNum)
 	for i := 0; i < fParallel; i++ {
 		index := i
-		eg.Go(func() error {
+		infoeg.Go(func() error {
 		RESTART:
 			driver := agouti.PhantomJS()
 			if err := driver.Start(); err != nil {
@@ -142,14 +183,14 @@ func mainFunc() error {
 					}
 
 					log.WithField("url", info.URL).Info("Success to parse")
-					done.Done()
+					info.FInfo.Done.Done()
 				}
 			}
 		})
 	}
 	for i := 0; i < retryNum; i++ {
 		index := i
-		eg.Go(func() error {
+		retryeg.Go(func() error {
 		RESTART:
 			driver := agouti.PhantomJS()
 			if err := driver.Start(); err != nil {
@@ -173,27 +214,29 @@ func mainFunc() error {
 					if err != nil {
 						// failed to retry, no more retry for this url, just mark completed
 						log.WithField("url", info.URL).Info("Failed to retry")
-						done.Done()
+						info.FInfo.Done.Done()
 
 						// we need restart retry worker
 						goto RESTART
 					}
 					log.WithField("url", info.URL).Info("Success to parse")
-					done.Done()
+					info.FInfo.Done.Done()
 				}
 			}
 		})
 	}
 
 	log.WithField("dataDir", fDataDir).Debug("Start to traversal data files")
-	filepath.Walk(fDataDir, walkFile(infoChan, done))
-
-	done.Wait()
+	err := filepath.Walk(fDataDir, walkFile(infoChan))
 	close(infoChan)
+	infoeg.Wait()
 	close(retryChan)
-	eg.Wait()
+	retryeg.Wait()
 	log.Debug("Finish all tasks")
 
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -232,7 +275,7 @@ func parseURL(index int, info URLInfo, driver *agouti.WebDriver) error {
 		"url":   url,
 	}).Debug("Success to open url")
 
-	var res map[string]interface{}
+	res := make(map[string]interface{})
 	for i, jsFunc := range info.JsFuncs {
 		err := page.RunScript(jsFunc, res, &res)
 		if err != nil {
@@ -267,6 +310,17 @@ func parseURL(index int, info URLInfo, driver *agouti.WebDriver) error {
 		"url":   url,
 	}).Debug("Parse finished")
 
+	if info.DumpHTML {
+		res["html"], err = page.HTML()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"index": index,
+				"url":   url,
+			}).Warn("Failed to get html")
+			return err
+		}
+	}
+
 	if len(res) == 0 {
 		log.WithFields(log.Fields{
 			"index": index,
@@ -275,13 +329,12 @@ func parseURL(index int, info URLInfo, driver *agouti.WebDriver) error {
 		return nil
 	}
 
-	data, _ := json.Marshal(res)
-	info.Ofile.WriteString(fmt.Sprintf("%s\t%s\n", url, string(data)))
+	info.ResChan <- URLRes{URL: url, Res: res}
 
 	return nil
 }
 
-func walkFile(infoChan chan<- URLInfo, done *sync.WaitGroup) func(path string, f os.FileInfo, err error) error {
+func walkFile(infoChan chan<- URLInfo) func(path string, f os.FileInfo, err error) error {
 	info := new(URLInfo)
 	return func(path string, f os.FileInfo, err error) error {
 		if f.IsDir() {
@@ -312,25 +365,26 @@ func walkFile(infoChan chan<- URLInfo, done *sync.WaitGroup) func(path string, f
 			return nil
 		}
 
-		resPath := fOutputDir + "/" + conf["output_file"].(string)
-		file, err := os.Create(resPath)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"res_path": resPath,
-				"err":      err,
-			}).Warn("Failed to create output file")
-			return nil
+		// get 'dump' setting
+		if val, ok := conf["dump_html"]; ok && val.(bool) {
+			info.DumpHTML = val.(bool)
+			log.WithField("dumpHTML", info.DumpHTML).Debug("Read dump_html conf")
 		}
-		info.Ofile = file
 
 		// we can have multi scripts for one page
+		if _, ok := conf["script_name"]; !ok {
+			log.WithFields(log.Fields{
+				"conf": conf,
+			}).Warn("Data file's conf has no 'script_name' item")
+			return nil
+		}
 		var scriptPath []string
 		switch scripts := conf["script_name"].(type) {
 		case string:
-			scriptPath = append(scriptPath, fScriptDir+"/"+scripts)
+			scriptPath = append(scriptPath, filepath.Join(fScriptDir, scripts))
 		case []interface{}:
 			for _, v := range scripts {
-				scriptPath = append(scriptPath, fScriptDir+"/"+v.(string))
+				scriptPath = append(scriptPath, filepath.Join(fScriptDir, v.(string)))
 			}
 		default:
 			log.WithFields(log.Fields{
@@ -352,24 +406,105 @@ func walkFile(infoChan chan<- URLInfo, done *sync.WaitGroup) func(path string, f
 			info.JsFuncs = append(info.JsFuncs, string(data))
 		}
 
+		ctx, cancel := context.WithCancel(context.Background())
+		// write output file routine
+		resChan := make(chan URLRes, fParallel+fParallel/2+1)
+		go func() {
+			// create output file
+			var resFilename string
+			if val, ok := conf["output_file"]; ok {
+				resFilename = val.(string)
+			} else {
+				resFilename = filename
+			}
+			noSuffix := strings.TrimSuffix(resFilename, filepath.Ext(resFilename))
+			resPath := filepath.Join(fOutputDir, noSuffix+".txt")
+			resFile, err := os.Create(resPath)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"res_path": resPath,
+					"err":      err,
+				}).Fatal("Failed to create output file")
+				cancel()
+			}
+
+			line := 0
+			index := 0
+			for res := range resChan {
+				data, _ := json.Marshal(res.Res)
+				resFile.WriteString(fmt.Sprintf("%s\t%s\n", res.URL, string(data)))
+				line++
+				if line >= fSplitCount {
+					resFile.Close()
+					line = 0
+					index++
+					resPath = filepath.Join(fOutputDir, noSuffix+strconv.Itoa(index)+".txt")
+					resFile, err = os.Create(resPath)
+					if err != nil {
+						log.WithFields(log.Fields{
+							"res_path": resPath,
+							"err":      err,
+						}).Fatal("Failed to create output file")
+
+						cancel()
+					}
+				}
+			}
+			resFile.Close()
+		}()
+
 		// read url from data file
-		file, err = os.Open(path)
+		inFile, err := os.Open(path)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"path": path,
 				"err":  err,
 			}).Fatal("Failed to open data file")
-
 			return nil
 		}
-		defer file.Close()
+		defer inFile.Close()
 
-		sc := bufio.NewScanner(file)
-		for sc.Scan() {
-			info.URL = sc.Text()
-			infoChan <- *info
-			done.Add(1)
+		fi := FileInfo{
+			Filename: filename,
+			Start:    time.Now(),
+			Done:     new(sync.WaitGroup),
 		}
+		info.FInfo = &fi
+		log.WithFields(log.Fields{
+			"filename": filename,
+			"start":    info.FInfo.Start,
+		}).Info("Start to crawler urls in one file")
+
+		sc := bufio.NewScanner(inFile)
+		for sc.Scan() {
+			select {
+			case <-ctx.Done():
+				log.WithFields(log.Fields{
+					"filename": filename,
+					"line":     atomic.LoadUint64(&info.FInfo.Line),
+					"elapsed":  time.Since(info.FInfo.Start),
+				}).Info("Partial finished to crawler urls in one file")
+
+				return ctx.Err()
+			default:
+				info.FInfo.Done.Add(1)
+				info.URL = sc.Text()
+				info.ResChan = resChan
+				atomic.AddUint64(&info.FInfo.Line, 1)
+				// log.WithField("info", info).Debug("Create one info")
+				infoChan <- *info
+			}
+		}
+
+		go func() {
+			info.FInfo.Done.Wait()
+			close(resChan)
+			log.WithFields(log.Fields{
+				"filename": filename,
+				"line":     atomic.LoadUint64(&info.FInfo.Line),
+				"elapsed":  time.Since(info.FInfo.Start),
+			}).Info("Finished to crawler urls in one file")
+		}()
 
 		return nil
 	}

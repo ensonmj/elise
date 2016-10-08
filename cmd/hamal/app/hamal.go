@@ -179,6 +179,7 @@ func mainFunc() error {
 							retryChan <- info
 						}(info)
 
+						driver.Stop()
 						goto RESTART
 					}
 
@@ -217,6 +218,7 @@ func mainFunc() error {
 						info.FInfo.Done.Done()
 
 						// we need restart retry worker
+						driver.Stop()
 						goto RESTART
 					}
 					log.WithField("url", info.URL).Info("Success to parse")
@@ -438,7 +440,7 @@ func walkFile(infoChan chan<- URLInfo) func(path string, f os.FileInfo, err erro
 					resFile.Close()
 					line = 0
 					index++
-					resPath = filepath.Join(fOutputDir, noSuffix+strconv.Itoa(index)+".txt")
+					resPath = filepath.Join(fOutputDir, noSuffix+"_"+strconv.Itoa(index)+".txt")
 					resFile, err = os.Create(resPath)
 					if err != nil {
 						log.WithFields(log.Fields{

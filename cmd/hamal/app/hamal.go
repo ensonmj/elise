@@ -23,14 +23,15 @@ import (
 )
 
 var (
-	fSplitCount int
-	fParallel   int
-	fVerbose    int
+	fParallel int
+	fVerbose  int
+	fLogDir   string
+	fFlushLog bool
+
 	fDataDir    string
 	fScriptDir  string
 	fOutputDir  string
-	fLogDir     string
-	fFlushLog   bool
+	fSplitCount int
 )
 
 func init() {
@@ -48,14 +49,14 @@ func init() {
 	viper.BindPFlag("flushLog", pflags.Lookup("flushLog"))
 
 	flags := HamalCmd.Flags()
-	flags.IntVarP(&fSplitCount, "splitCount", "c", 10000, "max line count for one output file")
 	flags.StringVar(&fDataDir, "dataDir", "./data", "dir for storage url files")
 	flags.StringVar(&fScriptDir, "scriptDir", "./script", "dir for storage scripts")
 	flags.StringVar(&fOutputDir, "outputDir", "./output", "dir for storage parse result files")
-	viper.BindPFlag("splitCount", flags.Lookup("splitCount"))
+	flags.IntVarP(&fSplitCount, "splitCount", "c", 10000, "max line count for one output file")
 	viper.BindPFlag("dataDir", flags.Lookup("dataDir"))
 	viper.BindPFlag("scriptDir", flags.Lookup("scriptDir"))
 	viper.BindPFlag("outputDir", flags.Lookup("outputDir"))
+	viper.BindPFlag("splitCount", flags.Lookup("splitCount"))
 }
 
 type FileInfo struct {

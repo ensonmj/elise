@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/url"
@@ -30,32 +31,41 @@ var (
 	fHTMLDoc     string
 	fHTMLFile    string
 	fCrawlerFile string
-	fCompact     int
-	fCheckImg    bool
 	fOTrim       bool
+	fWidthMin    float64
+	fHeightMin   float64
+	fRatioMin    float64 // width / height
+	fRatioMax    float64
+	fPicSplitCnt int
 )
 
 func init() {
 	flags := picCmd.Flags()
 	flags.StringVarP(&fURL, "url", "u", "", "webpage url for parse")
 	flags.StringVarP(&fHTMLDoc, "htmlDoc", "d", "", "html content, must be utf-8 encoding")
-	flags.StringVarP(&fHTMLFile, "htmlFile", "f", "", "html file, must be utf-8 encoding")
-	flags.StringVarP(&fCrawlerFile, "crawlerFile", "c", "", "crawler result file")
-	flags.IntVarP(&fCompact, "compact", "n", 5, "compactness of html node")
-	flags.BoolVar(&fCheckImg, "checkImg", true, "filter img by size, extention etc.")
-	flags.BoolVar(&fOTrim, "oTrim", false, "print html after trimming")
+	flags.StringVarP(&fHTMLFile, "htmlFile", "F", "", "html file, must be utf-8 encoding")
+	flags.StringVarP(&fCrawlerFile, "crawlerFile", "f", "", "crawler result file")
+	flags.BoolVarP(&fOTrim, "outputTrim", "o", false, "print html after trimming")
+	flags.Float64VarP(&fWidthMin, "widthMin", "W", 64.0, "image min width")
+	flags.Float64VarP(&fHeightMin, "heightMin", "H", 64.0, "image min height")
+	flags.Float64VarP(&fRatioMin, "ratioMin", "r", 0.35, "image width/height min value")
+	flags.Float64VarP(&fRatioMax, "ratioMax", "R", 2.85, "image width/height max value")
+	flags.IntVarP(&fPicSplitCnt, "splitCount", "c", 100, "max line count for one output file")
 	viper.BindPFlag("url", flags.Lookup("url"))
 	viper.BindPFlag("htmlDoc", flags.Lookup("htmlDoc"))
 	viper.BindPFlag("htmlFile", flags.Lookup("htmlFile"))
 	viper.BindPFlag("crawlerFile", flags.Lookup("crawlerFile"))
-	viper.BindPFlag("compact", flags.Lookup("compact"))
-	viper.BindPFlag("checkImg", flags.Lookup("checkImg"))
-	viper.BindPFlag("oTrim", flags.Lookup("oTrim"))
+	viper.BindPFlag("outputTrim", flags.Lookup("outputTrim"))
+	viper.BindPFlag("widthMin", flags.Lookup("widthMin"))
+	viper.BindPFlag("heightMin", flags.Lookup("heightMin"))
+	viper.BindPFlag("ratioMin", flags.Lookup("ratioMin"))
+	viper.BindPFlag("ratioMax", flags.Lookup("ratioMax"))
+	viper.BindPFlag("splitCount", flags.Lookup("splitCount"))
 }
 
 type TextInfo struct {
 	LineCnt *uint64
-	Text    string // format: "url\thtml"
+	Text    string // format: "'url'\t'html'"
 }
 
 type CrawlerResp struct {
@@ -64,10 +74,15 @@ type CrawlerResp struct {
 	HTML string `json:"html"`
 }
 
+type ImgItem struct {
+	Src                  string
+	Width, Height, Ratio float64
+}
+
 type ScoredGrp struct {
-	Score   int
-	ImgURLs []string
-	grpNode *html.Node
+	Score    int
+	ImgItems []ImgItem
+	grpNode  *html.Node
 }
 
 type ScoredGrpSlice struct {
@@ -100,6 +115,12 @@ var picCmd = &cobra.Command{
 	Short: "Use pictures to describe the webpage.",
 	Long: `Check all pictures in the webpage, find the pictures which can best
 represent the webpage according to web structure and something else.`,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		if fCrawlerFile == "" && fURL == "" {
+			return errors.New("Must specify 'crawlerFile' or 'url'")
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return parsePage()
 	},
@@ -112,7 +133,7 @@ var headerTmpl string = `{{define "header"}}<!DOCTYPE html>
 			* {margin:0; padding:0; list-style:none;}
 			.row ul:after {content:" "; display:block; clear:both; height:0; width:0;}
 			.row ul li {width:1000px; float:left; margin-bottom:10px; margin-right:10px;}
-			.row ul img {width: 100px;}
+			.row ul img {width: 100px; height: 100px;}
 			.row ul li p {line-height: 22px;}
 			</style>
 		</head>
@@ -128,8 +149,8 @@ var itemTmpl string = `{{define "item"}}
 				{{- range .ImgSGs}}
 					<li>
 						<p>Score: {{.Score}}</p>
-						{{- range .ImgURLs}}
-						<img src="{{.}}">
+						{{- range .ImgItems}}
+						<img src="{{.Src}}" prim-width="{{.Width}}" prim-height="{{.Height}}" width-height-ratio="{{.Ratio}}">
 						{{- end}}
 					</li>
 				{{- end}}
@@ -173,12 +194,19 @@ func parsePage() error {
 						}
 
 						title := doc.Find("title").Text()
+						lp := resp.LandingPage
 
-						trimHTML(resp.LandingPage, doc)
+						trimHTML(doc)
+						normalizeHTML(doc, lp)
+						trimBranch(doc)
+						if fOTrim {
+							str, _ := doc.Html()
+							fmt.Printf("%s\037%s\036\n", lp, gohtml.Format(str))
+						}
 
 						picDesc, err := groupImg(doc)
 						picDesc.Title = title
-						picDesc.allScoredGrp.LP = resp.LandingPage
+						picDesc.allScoredGrp.LP = lp
 						picDesc.allScoredGrp.Title = title
 						log.WithFields(log.Fields{
 							"picDesc": picDesc,
@@ -235,7 +263,7 @@ func parsePage() error {
 				}
 
 				line++
-				if line >= 100 {
+				if line >= fPicSplitCnt {
 					closeHTML(f, tmpl)
 
 					line = 0
@@ -257,7 +285,7 @@ func parsePage() error {
 		})
 
 		sc := bufio.NewScanner(f)
-		sc.Buffer([]byte{}, 2*1024*1024)
+		sc.Buffer([]byte{}, 2*1024*1024) // default 64k, change to 2M
 		lineCount := 0
 		for sc.Scan() {
 			select {
@@ -285,16 +313,20 @@ func parsePage() error {
 
 		if err = sc.Err(); err != nil {
 			log.WithFields(log.Fields{
-				"file":        fCrawlerFile,
-				"readLineCnt": lineCount,
-				"err":         err,
-			}).Warn("Read line from file")
+				"file":         fCrawlerFile,
+				"readLineCnt":  lineCount,
+				"writeLineCnt": atomic.LoadUint64(textInfo.LineCnt),
+				"elapsed":      time.Since(jobStarted),
+				"err":          err,
+			}).Warn("Failed to read line from file")
 			return err
 		}
 		log.WithFields(log.Fields{
-			"file":        fCrawlerFile,
-			"readLineCnt": lineCount,
-		}).Debug("Read line from file")
+			"file":         fCrawlerFile,
+			"readLineCnt":  lineCount,
+			"writeLineCnt": atomic.LoadUint64(textInfo.LineCnt),
+			"elapsed":      time.Since(jobStarted),
+		}).Debug("Finished all the job")
 	} else if fURL != "" {
 		var err error
 		var doc *goquery.Document
@@ -328,14 +360,19 @@ func parsePage() error {
 			}
 		}
 
-		trimHTML(fURL, doc)
+		title := doc.Find("title").Text()
+		trimHTML(doc)
+		normalizeHTML(doc, fURL)
+		trimBranch(doc)
+		if fOTrim {
+			str, _ := doc.Html()
+			fmt.Printf("%s\037%s\036\n", fURL, gohtml.Format(str))
+		}
 
 		picDesc, err := groupImg(doc)
+		picDesc.Title = title
 		picDesc.allScoredGrp.LP = fURL
-		log.WithFields(log.Fields{
-			"picDesc": picDesc,
-			"err":     err,
-		}).Debug("Finished to parse body")
+		picDesc.allScoredGrp.Title = title
 		if err != nil {
 			return err
 		}
@@ -363,18 +400,69 @@ func parsePage() error {
 	return nil
 }
 
-func trimHTML(lpSrc string, doc *goquery.Document) {
-	// trim some node according selector
+// trim some node according selector
+func trimHTML(doc *goquery.Document) {
 	for _, selector := range []string{"head", "header", "footer", "aside",
 		"a", "script", "object", "nav", "form", "input", "style", "iframe",
 		"h1", "h2", "h3", "h4", "h5", "h6"} {
 		doc.Find(selector).Remove()
 	}
+}
 
+func normalizeHTML(doc *goquery.Document, lpSrc string) {
+	doc.Find("img").Each(func(i int, sel *goquery.Selection) {
+		for _, n := range sel.Nodes {
+			var imgSrc string
+			for _, attr := range n.Attr {
+				if attr.Key == "data-src" || attr.Key == "data-original" {
+					imgSrc = attr.Val
+					break
+				} else if attr.Key == "src" {
+					imgSrc = attr.Val
+				}
+			}
+			if imgSrc == "" {
+				var buf bytes.Buffer
+				html.Render(&buf, n)
+				log.WithFields(log.Fields{
+					"lpSrc": lpSrc,
+					"node":  n,
+					"html":  buf.String(),
+				}).Warn("Can't find img src while normalizing")
+				continue
+			}
+
+			lpURL, err := url.Parse(lpSrc)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"lpSrc": lpSrc,
+					"err":   err,
+				}).Warn("Failed to parse landing page url")
+				continue
+			}
+			imgURL, err := url.Parse(imgSrc)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"imgSrc": imgSrc,
+					"err":    err,
+				}).Warn("Failed to parse img url")
+				continue
+			}
+
+			absoluteImgSrc := lpURL.ResolveReference(imgURL).String()
+			n.Attr = append(n.Attr, html.Attribute{Key: "prim-img", Val: absoluteImgSrc})
+			log.WithFields(log.Fields{
+				"absoluteImgSrc": absoluteImgSrc,
+			}).Debug("Got img src")
+		}
+	})
+}
+
+// trim branch which not include img node or unqualified img
+func trimBranch(doc *goquery.Document) {
 	doc.Find("body").Each(func(i int, sel *goquery.Selection) {
 		// only one body node
 		body := sel.Nodes[0]
-		// trim nodes which not include img node
 		trimNode(body, func(n *html.Node) bool {
 			// trim TextNode, CommentNode etc, which is not ElementNode
 			if n.Type != html.ElementNode {
@@ -387,23 +475,10 @@ func trimHTML(lpSrc string, doc *goquery.Document) {
 			if n.Data != "img" {
 				return true
 			}
-			// img node has no children
-			if !normalizeImg(n, lpSrc) {
-				return true
-			}
 			// trim img node which is not so good
-			if fCheckImg {
-				return filterImg(n, lpSrc)
-			}
-
-			return false
+			return filterImg(n)
 		})
 	})
-
-	if fOTrim {
-		str, _ := doc.Html()
-		fmt.Printf("%s\037%s\036\n", lpSrc, gohtml.Format(str))
-	}
 }
 
 // trim node which not include img node
@@ -418,64 +493,17 @@ func trimNode(n *html.Node, rmCheck func(n *html.Node) bool) {
 	}
 }
 
-func normalizeImg(n *html.Node, lpSrc string) bool {
-	var imgSrc string
-	for _, attr := range n.Attr {
-		if attr.Key == "data-src" || attr.Key == "data-original" {
-			imgSrc = attr.Val
-			break
-		} else if attr.Key == "src" {
-			imgSrc = attr.Val
-		}
-	}
-	if imgSrc == "" {
-		var buf bytes.Buffer
-		html.Render(&buf, n)
-		log.WithFields(log.Fields{
-			"lpSrc": lpSrc,
-			"node":  n,
-			"html":  buf.String(),
-		}).Warn("Can't find img src while normalizing")
-		return false
-	}
-
-	lpURL, err := url.Parse(lpSrc)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"lpSrc": lpSrc,
-			"err":   err,
-		}).Warn("Failed to parse landing page url")
-		return false
-	}
-	imgURL, err := url.Parse(imgSrc)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"imgSrc": imgSrc,
-			"err":    err,
-		}).Warn("Failed to parse img url")
-		return false
-	}
-
-	absoluteImgSrc := lpURL.ResolveReference(imgURL).String()
-	n.Attr = append(n.Attr, html.Attribute{Key: "prim-img", Val: absoluteImgSrc})
-	log.WithFields(log.Fields{
-		"absoluteImgSrc": absoluteImgSrc,
-	}).Debug("Got img src")
-
-	return true
-}
-
-func filterImg(n *html.Node, lpSrc string) bool {
+func filterImg(n *html.Node) bool {
 	if filterImgbyRect(n) {
 		return true
 	}
 
-	return filterImgbyExt(n, lpSrc)
+	return filterImgbyExt(n)
 }
 
 func filterImgbyRect(n *html.Node) bool {
 	_, _, width, height := getImgRect(n)
-	if width < 100 || height < 100 {
+	if width < fWidthMin || height < fHeightMin {
 		log.WithFields(log.Fields{
 			"width":  width,
 			"height": height,
@@ -483,7 +511,7 @@ func filterImgbyRect(n *html.Node) bool {
 		return true
 	}
 	ratio := width / height
-	if ratio < 0.35 || ratio > 2.85 {
+	if ratio < fRatioMin || ratio > fRatioMax {
 		log.WithFields(log.Fields{
 			"width":  width,
 			"height": height,
@@ -510,7 +538,7 @@ func getImgRect(n *html.Node) (top, left, width, height float64) {
 	return
 }
 
-func filterImgbyExt(n *html.Node, lpSrc string) bool {
+func filterImgbyExt(n *html.Node) bool {
 	var imgSrc string
 	for _, attr := range n.Attr {
 		if attr.Key == "prim-img" {
@@ -522,9 +550,8 @@ func filterImgbyExt(n *html.Node, lpSrc string) bool {
 		var buf bytes.Buffer
 		html.Render(&buf, n)
 		log.WithFields(log.Fields{
-			"lpSrc": lpSrc,
-			"node":  n,
-			"html":  buf.String(),
+			"node": n,
+			"html": buf.String(),
 		}).Warn("Can't find img src while filtering")
 		return true
 	}
@@ -665,36 +692,46 @@ func needSplit(n *html.Node) bool {
 func calcGrpScore(grpImgs []*html.Node) ScoredGrpSlice {
 	var allScoredGrp ScoredGrpSlice
 	for _, n := range grpImgs {
-		var imgURLs []string
+		var imgItems []ImgItem
 		var num int
-		num, imgURLs = countImgNode(n, imgURLs)
+		num, imgItems = extractImg(n, imgItems)
+		if num == 0 {
+			continue
+		}
 
-		grp := &ScoredGrp{Score: num, ImgURLs: imgURLs, grpNode: n}
+		grp := &ScoredGrp{Score: num, ImgItems: imgItems, grpNode: n}
 		allScoredGrp.ImgSGs = append(allScoredGrp.ImgSGs, grp)
 	}
 	return allScoredGrp
 }
 
-func countImgNode(n *html.Node, imgURLs []string) (int, []string) {
+func extractImg(n *html.Node, imgItems []ImgItem) (int, []ImgItem) {
 	if n.Data == "img" {
+		var imgItem ImgItem
 		for _, attr := range n.Attr {
-			if attr.Key == "prim-img" {
-				imgURLs = append(imgURLs, attr.Val)
-				break
+			switch attr.Key {
+			case "prim-width":
+				imgItem.Width, _ = strconv.ParseFloat(attr.Val, 64)
+			case "prim-height":
+				imgItem.Height, _ = strconv.ParseFloat(attr.Val, 64)
+			case "prim-img":
+				imgItem.Src = attr.Val
 			}
 		}
-		return 1, imgURLs
+		imgItem.Ratio = imgItem.Width / imgItem.Height
+		imgItems = append(imgItems, imgItem)
+		return 1, imgItems
 	}
 
 	totalNum := 0
 	for curr := n.FirstChild; curr != nil; curr = curr.NextSibling {
-		var imgs []string
+		var items []ImgItem
 		num := 0
-		num, imgs = countImgNode(curr, imgs)
+		num, items = extractImg(curr, items)
 		totalNum += num
-		imgURLs = append(imgURLs, imgs...)
+		imgItems = append(imgItems, items...)
 	}
-	return totalNum, imgURLs
+	return totalNum, imgItems
 }
 
 func openHTML(filename string) (f *os.File, tmpl *template.Template, err error) {

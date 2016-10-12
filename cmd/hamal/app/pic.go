@@ -281,7 +281,6 @@ func parsePage() error {
 					"err":     err,
 				}).Warn("Failed to create output HTML file")
 				cancel()
-				return err
 			}
 
 			line := 0
@@ -294,7 +293,6 @@ func parsePage() error {
 						"err":     err,
 					}).Warn("Failed to produce HTML node")
 					cancel()
-					break
 				}
 
 				line++
@@ -311,7 +309,6 @@ func parsePage() error {
 							"err":     err,
 						}).Warn("Failed to create output HTML file")
 						cancel()
-						break
 					}
 				}
 			}
@@ -322,6 +319,7 @@ func parsePage() error {
 		sc := bufio.NewScanner(f)
 		sc.Buffer([]byte{}, 2*1024*1024) // default 64k, change to 2M
 		lineCount := 0
+	SCANLOOP:
 		for sc.Scan() {
 			select {
 			case <-ctx.Done():
@@ -330,9 +328,9 @@ func parsePage() error {
 					"writeLineCnt": atomic.LoadUint64(textInfo.LineCnt),
 					"elapsed":      time.Since(jobStarted),
 					"err":          ctx.Err(),
-				}).Info("Partial finished to extract img from one file")
+				}).Warn("Partial finished to extract img from one file")
 
-				break
+				break SCANLOOP
 			default:
 				textInfo.Text = sc.Text()
 				textInfoChan <- textInfo

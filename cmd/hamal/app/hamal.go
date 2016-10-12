@@ -430,7 +430,6 @@ func walkFile(infoChan chan<- URLInfo) func(path string, f os.FileInfo, err erro
 					"err":      err,
 				}).Warn("Failed to create output file")
 				cancel()
-				return
 			}
 
 			line := 0
@@ -451,7 +450,6 @@ func walkFile(infoChan chan<- URLInfo) func(path string, f os.FileInfo, err erro
 							"err":      err,
 						}).Warn("Failed to create output file")
 						cancel()
-						break
 					}
 				}
 			}

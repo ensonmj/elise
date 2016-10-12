@@ -42,10 +42,10 @@ var (
 func init() {
 	flags := picCmd.Flags()
 	flags.StringVarP(&fURL, "url", "u", "", "webpage url for parse")
-	flags.StringVarP(&fHTMLDoc, "htmlDoc", "d", "", "html content, must be utf-8 encoding")
-	flags.StringVarP(&fHTMLFile, "htmlFile", "F", "", "html file, must be utf-8 encoding")
+	flags.StringVarP(&fHTMLDoc, "htmlDoc", "d", "", "HTML content, must be utf-8 encoding")
+	flags.StringVarP(&fHTMLFile, "htmlFile", "F", "", "HTML file, must be utf-8 encoding")
 	flags.StringVarP(&fCrawlerFile, "crawlerFile", "f", "", "crawler result file")
-	flags.BoolVarP(&fOTrim, "outputTrim", "o", false, "print html after trimming")
+	flags.BoolVarP(&fOTrim, "outputTrim", "o", false, "print HTML after trimming")
 	flags.Float64VarP(&fWidthMin, "widthMin", "W", 64.0, "image min width")
 	flags.Float64VarP(&fHeightMin, "heightMin", "H", 64.0, "image min height")
 	flags.Float64VarP(&fRatioMin, "ratioMin", "r", 0.35, "image width/height min value")
@@ -65,7 +65,7 @@ func init() {
 
 type TextInfo struct {
 	LineCnt *uint64
-	Text    string // format: "'url'\t'html'"
+	Text    string // format: "'url'\t'HTML'"
 }
 
 type CrawlerResp struct {
@@ -104,6 +104,10 @@ func (sgs ScoredGrpSlice) Less(i, j int) bool {
 	return sgs.ImgSGs[j].Score < sgs.ImgSGs[i].Score
 }
 
+func (sgs ScoredGrpSlice) Length() int {
+	return len(sgs.ImgSGs)
+}
+
 type PicDesc struct {
 	Title        string   `json:"title"`
 	Images       []string `json:"moreImages"`
@@ -126,7 +130,9 @@ represent the webpage according to web structure and something else.`,
 	},
 }
 
-var headerTmpl string = `{{define "header"}}<!DOCTYPE html>
+var headerTmpl string = `
+{{- define "header" -}}
+<!DOCTYPE html>
 	<html>
 		<head>
 			<style type="text/css">
@@ -138,9 +144,10 @@ var headerTmpl string = `{{define "header"}}<!DOCTYPE html>
 			</style>
 		</head>
 		<body>
-	{{- end -}}
-	`
-var itemTmpl string = `{{define "item"}}
+{{- end -}}
+`
+var itemTmpl string = `
+{{- define "item" -}}
 			<div class="row">
 				<a href="{{.LP}}">
 					<p>{{.Title}}</p>
@@ -156,14 +163,14 @@ var itemTmpl string = `{{define "item"}}
 				{{- end}}
 				</ul>
 			</div>
-	{{- end -}}
-	`
-
-var footerTmpl string = `{{define "footer"}}
+{{- end -}}
+`
+var footerTmpl string = `
+{{- define "footer" -}}
 		</body>
 	</html>
-	{{- end -}}
-	`
+{{- end -}}
+`
 
 func parsePage() error {
 	if fCrawlerFile != "" {
@@ -216,7 +223,13 @@ func parsePage() error {
 						lp := resp.LandingPage
 
 						trimHTML(doc)
-						normalizeHTML(doc, lp)
+						if err = normalizeHTML(doc, lp); err != nil {
+							log.WithFields(log.Fields{
+								"index": index,
+								"err":   err,
+							}).Warn("Failed to normalize HTML")
+							continue
+						}
 						trimBranch(doc)
 						if fOTrim {
 							str, _ := doc.Html()
@@ -224,21 +237,23 @@ func parsePage() error {
 						}
 
 						picDesc, err := groupImg(doc)
+						if err != nil {
+							log.WithFields(log.Fields{
+								"index": index,
+								"err":   err,
+							}).Warn("Failed to group image")
+							continue
+						}
 						picDesc.Title = title
 						picDesc.allScoredGrp.LP = lp
 						picDesc.allScoredGrp.Title = title
 						log.WithFields(log.Fields{
 							"index":   index,
 							"picDesc": picDesc,
-							"err":     err,
-						}).Debug("Finished to parse body")
-						if err != nil {
-							continue
-						}
+						}).Debug("Finished to parse one HTML string")
 
 						atomic.AddUint64(textInfo.LineCnt, 1)
 						picDescChan <- picDesc
-
 					}
 				}
 			})
@@ -253,7 +268,7 @@ func parsePage() error {
 			return err
 		}
 
-		// create output html file
+		// create output HTML file
 		ctx, cancel := context.WithCancel(context.Background())
 		writeEG.Go(func() error {
 			base := filepath.Base(fCrawlerFile)
@@ -264,7 +279,7 @@ func parsePage() error {
 				log.WithFields(log.Fields{
 					"resPath": resPath,
 					"err":     err,
-				}).Warn("Failed to create output html file")
+				}).Warn("Failed to create output HTML file")
 				cancel()
 				return err
 			}
@@ -277,7 +292,7 @@ func parsePage() error {
 					log.WithFields(log.Fields{
 						"resPath": resPath,
 						"err":     err,
-					}).Warn("Failed to produce html node")
+					}).Warn("Failed to produce HTML node")
 					cancel()
 					break
 				}
@@ -294,7 +309,7 @@ func parsePage() error {
 						log.WithFields(log.Fields{
 							"resPath": resPath,
 							"err":     err,
-						}).Warn("Failed to create output html file")
+						}).Warn("Failed to create output HTML file")
 						cancel()
 						break
 					}
@@ -360,9 +375,9 @@ func parsePage() error {
 			f, err := os.Open(fHTMLFile)
 			if err != nil {
 				log.WithFields(log.Fields{
-					"htmlFile": fHTMLFile,
+					"HTMLFile": fHTMLFile,
 					"err":      err,
-				}).Fatal("Failed to open html file")
+				}).Fatal("Failed to open HTML file")
 				return err
 			}
 			defer f.Close()
@@ -382,7 +397,10 @@ func parsePage() error {
 
 		title := doc.Find("title").Text()
 		trimHTML(doc)
-		normalizeHTML(doc, fURL)
+		if err = normalizeHTML(doc, fURL); err != nil {
+			log.WithField("err", err).Warn("Failed to normalize HTML")
+			return err
+		}
 		trimBranch(doc)
 		if fOTrim {
 			str, _ := doc.Html()
@@ -390,12 +408,14 @@ func parsePage() error {
 		}
 
 		picDesc, err := groupImg(doc)
+		if err != nil {
+			log.WithField("err", err).Warn("Failed to group image")
+			return err
+		}
 		picDesc.Title = title
 		picDesc.allScoredGrp.LP = fURL
 		picDesc.allScoredGrp.Title = title
-		if err != nil {
-			return err
-		}
+		log.WithField("picDesc", picDesc).Debug("Finished to parse one HTML")
 
 		noSuffix := strings.TrimSuffix(fCrawlerFile, filepath.Ext(fCrawlerFile))
 		resPath := filepath.Join(fOutputDir, noSuffix+".html")
@@ -404,17 +424,16 @@ func parsePage() error {
 			log.WithFields(log.Fields{
 				"resPath": resPath,
 				"err":     err,
-			}).Fatal("Failed to create output html file")
+			}).Fatal("Failed to create output HTML file")
 			return err
 		}
 		defer closeHTML(f, tmpl)
 		err = produceHTML(f, tmpl, picDesc.allScoredGrp)
 		if err != nil {
-			log.WithFields(log.Fields{
-				"err": err,
-			}).Warn("Failed to produce html node")
+			log.WithField("err", err).Warn("Failed to produce HTML node")
 			return err
 		}
+		log.Debug("Finished to write output HTML file")
 	}
 
 	return nil
@@ -429,7 +448,8 @@ func trimHTML(doc *goquery.Document) {
 	}
 }
 
-func normalizeHTML(doc *goquery.Document, lpSrc string) {
+func normalizeHTML(doc *goquery.Document, lpSrc string) error {
+	num := 0
 	doc.Find("img").Each(func(i int, sel *goquery.Selection) {
 		for _, n := range sel.Nodes {
 			var imgSrc string
@@ -447,7 +467,7 @@ func normalizeHTML(doc *goquery.Document, lpSrc string) {
 				log.WithFields(log.Fields{
 					"lpSrc": lpSrc,
 					"node":  n,
-					"html":  buf.String(),
+					"HTML":  buf.String(),
 				}).Warn("Can't find img src while normalizing")
 				continue
 			}
@@ -474,30 +494,38 @@ func normalizeHTML(doc *goquery.Document, lpSrc string) {
 			log.WithFields(log.Fields{
 				"absoluteImgSrc": absoluteImgSrc,
 			}).Debug("Got img src")
+
+			num++
 		}
 	})
+
+	if num <= 0 {
+		return errors.New("can't find any img node")
+	}
+	return nil
 }
 
 // trim branch which not include img node or unqualified img
 func trimBranch(doc *goquery.Document) {
-	doc.Find("body").Each(func(i int, sel *goquery.Selection) {
-		// only one body node
-		body := sel.Nodes[0]
-		trimNode(body, func(n *html.Node) bool {
-			// trim TextNode, CommentNode etc, which is not ElementNode
-			if n.Type != html.ElementNode {
-				return true
-			}
-			if n.FirstChild != nil {
-				return false
-			}
-			// trim leaf node which is not img node
-			if n.Data != "img" {
-				return true
-			}
-			// trim img node which is not so good
-			return filterImg(n)
-		})
+	// only one body node
+	sel := doc.Find("body")
+	if len(sel.Nodes) == 0 {
+		return
+	}
+	trimNode(sel.Nodes[0], func(n *html.Node) bool {
+		// trim TextNode, CommentNode etc, which is not ElementNode
+		if n.Type != html.ElementNode {
+			return true
+		}
+		if n.FirstChild != nil {
+			return false
+		}
+		// trim leaf node which is not img node
+		if n.Data != "img" {
+			return true
+		}
+		// trim img node which is not so good
+		return filterImg(n)
 	})
 }
 
@@ -571,7 +599,7 @@ func filterImgbyExt(n *html.Node) bool {
 		html.Render(&buf, n)
 		log.WithFields(log.Fields{
 			"node": n,
-			"html": buf.String(),
+			"HTML": buf.String(),
 		}).Warn("Can't find img src while filtering")
 		return true
 	}
@@ -589,17 +617,19 @@ func filterImgbyExt(n *html.Node) bool {
 }
 
 func groupImg(doc *goquery.Document) (*PicDesc, error) {
-	picDesc := &PicDesc{}
+	sel := doc.Find("body")
+	if len(sel.Nodes) == 0 {
+		return nil, errors.New("empty HTML body")
+	}
+	// only one body node
+	grpImgs := splitTree(sel.Nodes[0])
+	allScoredGrp := calcScore(grpImgs)
+	if allScoredGrp.Length() <= 0 {
+		return nil, errors.New("can't find any img node")
+	}
+	sort.Sort(allScoredGrp)
 
-	doc.Find("body").Each(func(i int, sel *goquery.Selection) {
-		// only one body node
-		body := sel.Nodes[0]
-		grpImgs := splitTree(body)
-		allScoredGrp := calcGrpScore(grpImgs)
-		sort.Sort(allScoredGrp)
-		picDesc.allScoredGrp = allScoredGrp
-	})
-
+	picDesc := &PicDesc{allScoredGrp: allScoredGrp}
 	return picDesc, nil
 }
 
@@ -712,7 +742,7 @@ func needSplit(n *html.Node) bool {
 	return false
 }
 
-func calcGrpScore(grpImgs []*html.Node) ScoredGrpSlice {
+func calcScore(grpImgs []*html.Node) ScoredGrpSlice {
 	var allScoredGrp ScoredGrpSlice
 	for _, n := range grpImgs {
 		var imgItems []ImgItem

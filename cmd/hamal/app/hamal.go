@@ -411,6 +411,7 @@ func walkFile(infoChan chan<- URLInfo) func(path string, f os.FileInfo, err erro
 		ctx, cancel := context.WithCancel(context.Background())
 		// write output file routine
 		resChan := make(chan URLRes, fParallel+fParallel/2+1)
+		// TODO: make sure finish to write output file before exit
 		go func() {
 			// create output file
 			var resFilename string
@@ -426,8 +427,9 @@ func walkFile(infoChan chan<- URLInfo) func(path string, f os.FileInfo, err erro
 				log.WithFields(log.Fields{
 					"res_path": resPath,
 					"err":      err,
-				}).Fatal("Failed to create output file")
+				}).Warn("Failed to create output file")
 				cancel()
+				return
 			}
 
 			line := 0
@@ -446,9 +448,9 @@ func walkFile(infoChan chan<- URLInfo) func(path string, f os.FileInfo, err erro
 						log.WithFields(log.Fields{
 							"res_path": resPath,
 							"err":      err,
-						}).Fatal("Failed to create output file")
-
+						}).Warn("Failed to create output file")
 						cancel()
+						break
 					}
 				}
 			}

@@ -178,18 +178,37 @@ func parsePage() error {
 				for {
 					select {
 					case textInfo, ok := <-textInfoChan:
+						log.WithFields(log.Fields{
+							"index": index,
+							"text":  textInfo.Text,
+						}).Debug("Received text")
 						if !ok {
-							log.WithField("index", index).Debug("worker exit")
+							log.WithField("index", index).Debug("Worker exit")
 							return nil
 						}
 						fields := strings.Split(textInfo.Text, "\t")
+						if len(fields) != 2 {
+							log.WithFields(log.Fields{
+								"index": index,
+								"text":  textInfo.Text,
+							}).Warn("Text format is wrong")
+							continue
+						}
 						var resp CrawlerResp
 						if err := json.Unmarshal([]byte(fields[1]), &resp); err != nil {
+							log.WithFields(log.Fields{
+								"index": index,
+								"text":  textInfo.Text,
+								"err":   err,
+							}).Warn("Failed to unmarshal")
 							continue
 						}
 						doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.HTML))
 						if err != nil {
-							log.WithField("err", err).Warn("Failed to create document")
+							log.WithFields(log.Fields{
+								"index": index,
+								"err":   err,
+							}).Warn("Failed to create document")
 							continue
 						}
 
@@ -209,6 +228,7 @@ func parsePage() error {
 						picDesc.allScoredGrp.LP = lp
 						picDesc.allScoredGrp.Title = title
 						log.WithFields(log.Fields{
+							"index":   index,
 							"picDesc": picDesc,
 							"err":     err,
 						}).Debug("Finished to parse body")
@@ -557,8 +577,11 @@ func filterImgbyExt(n *html.Node) bool {
 	}
 	// some img has no extention
 	ext := filepath.Ext(imgSrc)
-	if ext == "gif" {
-		log.WithField("imgSrc", imgSrc).Debug("Img filtered by ext")
+	log.WithFields(log.Fields{
+		"imgSrc": imgSrc,
+		"ext":    ext,
+	}).Debug("Get img extention")
+	if ext == ".gif" {
 		return true
 	}
 

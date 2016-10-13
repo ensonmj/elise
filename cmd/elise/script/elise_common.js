@@ -2,7 +2,7 @@ var result={};
 result["final_url"] = window.location.href;
 result["title"] = document.title;
 
-var elementNames = ["body", "div"]
+var elementNames = ["div"]
 elementNames.forEach(function(tagName){
   var tags = document.getElementsByTagName(tagName);
   var numTags = tags.length;
@@ -19,11 +19,12 @@ elementNames.forEach(function(tagName){
 });
 
 [].forEach.call(document.querySelectorAll("img"), function(imgItem) {
+  imgItem.setAttribute("prim-width", imgItem.naturalWidth);
+  imgItem.setAttribute("prim-height", imgItem.naturalHeight);
+
   clientRect = imgItem.getBoundingClientRect();
   imgItem.setAttribute("prim-top", clientRect.top);
   imgItem.setAttribute("prim-left", clientRect.left);
-  imgItem.setAttribute("prim-width", clientRect.width);
-  imgItem.setAttribute("prim-height", clientRect.height);
 });
 
 return result;

@@ -16,5 +16,4 @@
     }
 
     return result;
-    ;}).apply(this, arguments);
 })()

@@ -41,14 +41,6 @@ type URLInfo struct {
 	FInfo    *FileInfo
 }
 
-var (
-	fParallel   int
-	fDataDir    string
-	fScriptDir  string
-	fOutputDir  string
-	fSplitCount int
-)
-
 var CrawlCmd = &cobra.Command{
 	Use:   "crawl",
 	Short: "Crawl parse webpage based on javascripts, then save parse results.",
@@ -66,15 +58,24 @@ var CrawlCmd = &cobra.Command{
 			return err
 		}
 		if _, err := os.Stat(fOutputDir); os.IsNotExist(err) {
-			os.Mkdir(fOutputDir, os.ModePerm)
-			log.WithFields(log.Fields{
-				"outputDir": fOutputDir,
-			}).Debug("Create output dir")
+			if err = os.Mkdir(fOutputDir, os.ModePerm); err != nil {
+				return err
+			}
 		}
-
+		return nil
+	},
+	RunE: func(cmd *cobra.Command, args []string) error {
 		return mainFunc()
 	},
 }
+
+var (
+	fParallel   int
+	fDataDir    string
+	fScriptDir  string
+	fOutputDir  string
+	fSplitCount int
+)
 
 func init() {
 	flags := CrawlCmd.Flags()

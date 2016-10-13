@@ -13,19 +13,15 @@ import (
 	"github.com/spf13/viper"
 )
 
-var (
-	fVerbose  int
-	fLogDir   string
-	fFlushLog bool
-)
-
 var mainCmd = &cobra.Command{
 	Use:   "elise",
 	Short: "Elise crawl webpage based on javascript, then parse and demonstrate",
 	Long:  "Elise, the queue of spiders, one of the heroes of game League of Legends(LOL).",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := os.Stat(fLogDir); os.IsNotExist(err) {
-			os.Mkdir(fLogDir, os.ModePerm)
+			if err = os.Mkdir(fLogDir, os.ModePerm); err != nil {
+				return err
+			}
 		} else if fFlushLog {
 			dir, err := os.Open(fLogDir)
 			if err != nil {
@@ -53,6 +49,12 @@ var mainCmd = &cobra.Command{
 		return nil
 	},
 }
+
+var (
+	fVerbose  int
+	fLogDir   string
+	fFlushLog bool
+)
 
 func init() {
 	mainCmd.AddCommand(app.VersionCmd)

@@ -118,18 +118,6 @@ var footerTmpl string = `
 </html>
 {{ end -}}
 `
-var (
-	fURL         string
-	fHTMLDoc     string
-	fHTMLFile    string
-	fCrawlerFile string
-	fOTrim       bool
-	fWidthMin    float64
-	fHeightMin   float64
-	fRatioMin    float64 // width / height
-	fRatioMax    float64
-	fPicSplitCnt int
-)
 
 var PicCmd = &cobra.Command{
 	Use:   "pic",
@@ -137,6 +125,11 @@ var PicCmd = &cobra.Command{
 	Long: `Check all pictures in the webpage, find the pictures which can best
 represent the webpage according to web structure and something else.`,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := os.Stat(fPubDir); os.IsNotExist(err) {
+			if err = os.Mkdir(fPubDir, os.ModePerm); err != nil {
+				return err
+			}
+		}
 		if fCrawlerFile == "" && fURL == "" {
 			return errors.New("Must specify 'crawlerFile' or 'url'")
 		}
@@ -147,38 +140,57 @@ represent the webpage according to web structure and something else.`,
 	},
 }
 
+var (
+	fURL         string
+	fHTMLDoc     string
+	fHTMLFile    string
+	fCrawlerFile string
+	fPubDir      string
+	fOTrim       bool
+	fWidthMin    float64
+	fHeightMin   float64
+	fRatioMin    float64 // width / height
+	fRatioMax    float64
+	fPicSplitCnt int
+	fPicParallel int
+)
+
 func init() {
 	flags := PicCmd.Flags()
 	flags.StringVarP(&fURL, "url", "u", "", "webpage url for parse")
 	flags.StringVarP(&fHTMLDoc, "htmlDoc", "d", "", "HTML content, must be utf-8 encoding")
 	flags.StringVarP(&fHTMLFile, "htmlFile", "F", "", "HTML file, must be utf-8 encoding")
 	flags.StringVarP(&fCrawlerFile, "crawlerFile", "f", "", "crawler result file")
+	flags.StringVarP(&fPubDir, "pubDir", "P", "./pub", "public dir for store demonstration HTML file")
 	flags.BoolVarP(&fOTrim, "outputTrim", "o", false, "print HTML after trimming")
 	flags.Float64VarP(&fWidthMin, "widthMin", "W", 64.0, "image min width")
 	flags.Float64VarP(&fHeightMin, "heightMin", "H", 64.0, "image min height")
 	flags.Float64VarP(&fRatioMin, "ratioMin", "r", 0.35, "image width/height min value")
 	flags.Float64VarP(&fRatioMax, "ratioMax", "R", 2.85, "image width/height max value")
 	flags.IntVarP(&fPicSplitCnt, "splitCount", "c", 100, "max line count for one output file")
+	flags.IntVarP(&fPicParallel, "parallel", "p", 10, "max number of parallel exector")
 	viper.BindPFlag("url", flags.Lookup("url"))
 	viper.BindPFlag("htmlDoc", flags.Lookup("htmlDoc"))
 	viper.BindPFlag("htmlFile", flags.Lookup("htmlFile"))
 	viper.BindPFlag("crawlerFile", flags.Lookup("crawlerFile"))
+	viper.BindPFlag("pubDir", flags.Lookup("pubDir"))
 	viper.BindPFlag("outputTrim", flags.Lookup("outputTrim"))
 	viper.BindPFlag("widthMin", flags.Lookup("widthMin"))
 	viper.BindPFlag("heightMin", flags.Lookup("heightMin"))
 	viper.BindPFlag("ratioMin", flags.Lookup("ratioMin"))
 	viper.BindPFlag("ratioMax", flags.Lookup("ratioMax"))
 	viper.BindPFlag("splitCount", flags.Lookup("splitCount"))
+	viper.BindPFlag("parallel", flags.Lookup("parallel"))
 }
 
 func parsePage() error {
 	if fCrawlerFile != "" {
 		var eg, writeEG errgroup.Group
 		textInfo := TextInfo{LineCnt: new(uint64)}
-		textInfoChan := make(chan TextInfo, fParallel)
-		picDescChan := make(chan *PicDesc, fParallel)
+		textInfoChan := make(chan TextInfo, fPicParallel)
+		picDescChan := make(chan *PicDesc, fPicParallel)
 		jobStarted := time.Now()
-		for i := 0; i < fParallel; i++ {
+		for i := 0; i < fPicParallel; i++ {
 			index := i
 			eg.Go(func() error {
 				for {
@@ -272,7 +284,7 @@ func parsePage() error {
 		writeEG.Go(func() error {
 			base := filepath.Base(fCrawlerFile)
 			noSuffix := strings.TrimSuffix(base, filepath.Ext(base))
-			resPath := filepath.Join(fOutputDir, noSuffix+".html")
+			resPath := filepath.Join(fPubDir, noSuffix+".html")
 			f, tmpl, err := openHTML(resPath)
 			if err != nil {
 				log.WithFields(log.Fields{
@@ -300,7 +312,7 @@ func parsePage() error {
 
 					line = 0
 					index++
-					resPath = filepath.Join(fOutputDir, noSuffix+"_"+strconv.Itoa(index)+".html")
+					resPath = filepath.Join(fPubDir, noSuffix+"_"+strconv.Itoa(index)+".html")
 					f, tmpl, err = openHTML(resPath)
 					if err != nil {
 						log.WithFields(log.Fields{
@@ -415,7 +427,7 @@ func parsePage() error {
 		log.WithField("picDesc", picDesc).Debug("Finished to parse one HTML")
 
 		noSuffix := strings.TrimSuffix(fCrawlerFile, filepath.Ext(fCrawlerFile))
-		resPath := filepath.Join(fOutputDir, noSuffix+".html")
+		resPath := filepath.Join(fPubDir, noSuffix+".html")
 		f, tmpl, err := openHTML(resPath)
 		if err != nil {
 			log.WithFields(log.Fields{

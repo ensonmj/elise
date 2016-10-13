@@ -28,10 +28,7 @@ func init() {
 func web() error {
 	fs := http.FileServer(http.Dir(fPubDir))
 	http.Handle("/", fs)
+
 	addr := ":" + fPort
-	err := http.ListenAndServe(addr, nil)
-	if err != nil {
-		return err
-	}
-	return nil
+	return http.ListenAndServe(addr, nil)
 }

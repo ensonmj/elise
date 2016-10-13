@@ -813,11 +813,7 @@ func extractImg(n *html.Node, imgItems []ImgItem) (int, []ImgItem) {
 }
 
 func initTmpl(tmpl string) (*template.Template, error) {
-	t, err := template.New("tmpl").Parse(tmpl)
-	if err != nil {
-		return nil, err
-	}
-	return t, nil
+	return template.New("tmpl").Parse(tmpl)
 }
 
 func openHTML(filename string, tmpl *template.Template) (f *os.File, err error) {
@@ -827,27 +823,15 @@ func openHTML(filename string, tmpl *template.Template) (f *os.File, err error) 
 	}
 
 	err = tmpl.ExecuteTemplate(f, "header", nil)
-	if err != nil {
-		return
-	}
-
 	return
 }
 
 func produceHTML(f *os.File, tmpl *template.Template, sgs ScoredGrpSlice) error {
-	err := tmpl.ExecuteTemplate(f, "item", sgs)
-	if err != nil {
-		return err
-	}
-	return nil
+	return tmpl.ExecuteTemplate(f, "item", sgs)
 }
 
 func closeHTML(f *os.File, tmpl *template.Template) error {
-	defer f.Close()
-
 	err := tmpl.ExecuteTemplate(f, "footer", nil)
-	if err != nil {
-		return err
-	}
-	return nil
+	f.Close()
+	return err
 }

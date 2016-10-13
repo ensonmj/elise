@@ -131,45 +131,45 @@ represent the webpage according to web structure and something else.`,
 }
 
 var headerTmpl string = `
-{{- define "header" -}}
+{{- define "header" }}
 <!DOCTYPE html>
-	<html>
-		<head>
-			<style type="text/css">
-			* {margin:0; padding:0; list-style:none;}
-			.row ul:after {content:" "; display:block; clear:both; height:0; width:0;}
-			.row ul li {width:1000px; float:left; margin-bottom:10px; margin-right:10px;}
-			.row ul img {width: 100px; height: 100px;}
-			.row ul li p {line-height: 22px;}
-			</style>
-		</head>
-		<body>
-{{- end -}}
+<html>
+	<head>
+		<style type="text/css">
+		img {width: 100px; height: 100px; margin-right: 10px}
+		</style>
+		<link rel="stylesheet" href="http://cdn.bootcss.com/bootstrap/3.3.0/css/bootstrap.min.css">
+		<link rel="stylesheet" href="http://cdn.bootcss.com/bootstrap/3.3.0/css/bootstrap-theme.min.css">
+		<script src="http://cdn.bootcss.com/jquery/1.11.1/jquery.min.js"></script>
+		<script src="http://cdn.bootcss.com/bootstrap/3.3.0/js/bootstrap.min.js"></script>
+	</head>
+	<body>
+		<div class="list-group container">
+{{end -}}
 `
 var itemTmpl string = `
-{{- define "item" -}}
-			<div class="row">
-				<a href="{{.LP}}">
-					<p>{{.Title}}</p>
-				</a>
-				<ul>
+{{define "item"}}
+			<div class="row list-group list-group-item panel panel-primary">
+				<div class="list-group-item panel-heading">
+					<a class="panel-title" href="{{.LP}}">{{.Title}}</a>
+				</div>
 				{{- range .ImgSGs}}
-					<li>
-						<p>Score: {{.Score}}</p>
-						{{- range .ImgItems}}
-						<img src="{{.Src}}" prim-width="{{.Width}}" prim-height="{{.Height}}" width-height-ratio="{{.Ratio}}">
-						{{- end}}
-					</li>
+				<div class="list-group-item">
+					<span class="badge">{{.Score}}</span>
+					{{- range .ImgItems}}
+					<img src="{{.Src}}" prim-width="{{.Width}}" prim-height="{{.Height}}" width-height-ratio="{{.Ratio}}">
+					{{- end}}
+				</div>
 				{{- end}}
-				</ul>
 			</div>
-{{- end -}}
+{{ end -}}
 `
 var footerTmpl string = `
-{{- define "footer" -}}
-		</body>
-	</html>
-{{- end -}}
+{{define "footer"}}
+		</div>
+	</body>
+</html>
+{{ end -}}
 `
 
 func parsePage() error {

@@ -50,13 +50,13 @@ var (
 )
 
 var CrawlCmd = &cobra.Command{
-	Use:   "hamal",
-	Short: "Hamal parse webpage based on scripts.",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	Use:   "crawl",
+	Short: "Crawl parse webpage based on javascripts, then save parse results.",
+	PreRunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := os.Stat(fDataDir); os.IsNotExist(err) {
 			log.WithFields(log.Fields{
 				"dataDir": fDataDir,
-			}).Fatal("No script dir")
+			}).Fatal("No data dir")
 			return err
 		}
 		if _, err := os.Stat(fScriptDir); os.IsNotExist(err) {

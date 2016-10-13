@@ -78,24 +78,24 @@ type PicDesc struct {
 	allScoredGrp ScoredGrpSlice
 }
 
-var headerTmpl string = `
+var tmplStr string = `
 {{- define "header" }}
 <!DOCTYPE html>
 <html>
 	<head>
-		<style type="text/css">
-		img {width: 100px; height: 100px; margin-right: 10px}
-		</style>
+		<meta charset="utf-8">
+		<title>Elise</title>
 		<link rel="stylesheet" href="http://cdn.bootcss.com/bootstrap/3.3.0/css/bootstrap.min.css">
 		<link rel="stylesheet" href="http://cdn.bootcss.com/bootstrap/3.3.0/css/bootstrap-theme.min.css">
 		<script src="http://cdn.bootcss.com/jquery/1.11.1/jquery.min.js"></script>
 		<script src="http://cdn.bootcss.com/bootstrap/3.3.0/js/bootstrap.min.js"></script>
+		<style type="text/css">
+			img {width: 100px; height: 100px; margin-right: 10px}
+		</style>
 	</head>
 	<body>
 		<div class="list-group container">
 {{end -}}
-`
-var itemTmpl string = `
 {{define "item"}}
 			<div class="row list-group list-group-item panel panel-primary">
 				<div class="list-group-item panel-heading">
@@ -111,8 +111,6 @@ var itemTmpl string = `
 				{{- end}}
 			</div>
 {{ end -}}
-`
-var footerTmpl string = `
 {{define "footer"}}
 		</div>
 	</body>
@@ -288,12 +286,17 @@ func parsePage() error {
 		}
 
 		// create output HTML file
+		tmpl, err := initTmpl(tmplStr)
+		if err != nil {
+			log.WithError(err).Warn("Failed to init template")
+			return err
+		}
 		ctx, cancel := context.WithCancel(context.Background())
 		writeEG.Go(func() error {
 			base := filepath.Base(fCrawlerFile)
 			noSuffix := strings.TrimSuffix(base, filepath.Ext(base))
 			resPath := filepath.Join(fPubDir, noSuffix+".html")
-			f, tmpl, err := openHTML(resPath)
+			f, err := openHTML(resPath, tmpl)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"resPath": resPath,
@@ -321,7 +324,7 @@ func parsePage() error {
 					line = 0
 					index++
 					resPath = filepath.Join(fPubDir, noSuffix+"_"+strconv.Itoa(index)+".html")
-					f, tmpl, err = openHTML(resPath)
+					f, err = openHTML(resPath, tmpl)
 					if err != nil {
 						log.WithFields(log.Fields{
 							"resPath": resPath,
@@ -434,9 +437,14 @@ func parsePage() error {
 		picDesc.allScoredGrp.Title = title
 		log.WithField("picDesc", picDesc).Debug("Finished to parse one HTML")
 
+		tmpl, err := initTmpl(tmplStr)
+		if err != nil {
+			log.WithError(err).Warn("Failed to init template")
+			return err
+		}
 		noSuffix := strings.TrimSuffix(fCrawlerFile, filepath.Ext(fCrawlerFile))
 		resPath := filepath.Join(fPubDir, noSuffix+".html")
-		f, tmpl, err := openHTML(resPath)
+		f, err := openHTML(resPath, tmpl)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"resPath": resPath,
@@ -804,21 +812,16 @@ func extractImg(n *html.Node, imgItems []ImgItem) (int, []ImgItem) {
 	return totalNum, imgItems
 }
 
-func openHTML(filename string) (f *os.File, tmpl *template.Template, err error) {
-	f, err = os.Create(filename)
+func initTmpl(tmpl string) (*template.Template, error) {
+	t, err := template.New("tmpl").Parse(tmpl)
 	if err != nil {
-		return
+		return nil, err
 	}
+	return t, nil
+}
 
-	tmpl, err = template.New("tmpl").Parse(headerTmpl)
-	if err != nil {
-		return
-	}
-	tmpl, err = tmpl.Parse(itemTmpl)
-	if err != nil {
-		return
-	}
-	tmpl, err = tmpl.Parse(footerTmpl)
+func openHTML(filename string, tmpl *template.Template) (f *os.File, err error) {
+	f, err = os.Create(filename)
 	if err != nil {
 		return
 	}

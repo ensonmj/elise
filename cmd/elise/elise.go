@@ -8,6 +8,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/ensonmj/elise/cmd/elise/app"
+	"github.com/ensonmj/elise/cmd/elise/util"
 	"github.com/rifflock/lfshook"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -23,20 +24,8 @@ var mainCmd = &cobra.Command{
 				return err
 			}
 		} else if fFlushLog {
-			dir, err := os.Open(fLogDir)
-			if err != nil {
+			if err := util.FlushDir(fLogDir); err != nil {
 				return err
-			}
-			defer dir.Close()
-			names, err := dir.Readdirnames(-1)
-			if err != nil {
-				return err
-			}
-			for _, name := range names {
-				err = os.RemoveAll(filepath.Join(fLogDir, name))
-				if err != nil {
-					return err
-				}
 			}
 		}
 		log.AddHook(lfshook.NewHook(lfshook.PathMap{
@@ -88,7 +77,6 @@ func main() {
 	}
 
 	if err := mainCmd.Execute(); err != nil {
-		log.WithError(err).Fatal("Elise exit")
-		os.Exit(-1)
+		panic(err)
 	}
 }

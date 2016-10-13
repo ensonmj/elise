@@ -19,6 +19,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	log "github.com/Sirupsen/logrus"
+	"github.com/ensonmj/elise/cmd/elise/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yosssi/gohtml"
@@ -129,6 +130,10 @@ represent the webpage according to web structure and something else.`,
 			if err = os.Mkdir(fPubDir, os.ModePerm); err != nil {
 				return err
 			}
+		} else if fFlushPub {
+			if err := util.FlushDir(fPubDir); err != nil {
+				return err
+			}
 		}
 		if fCrawlerFile == "" && fURL == "" {
 			return errors.New("Must specify 'crawlerFile' or 'url'")
@@ -146,13 +151,14 @@ var (
 	fHTMLFile    string
 	fCrawlerFile string
 	fPubDir      string
+	fFlushPub    bool
+	fPicSplitCnt int
+	fPicParallel int
 	fOTrim       bool
 	fWidthMin    float64
 	fHeightMin   float64
 	fRatioMin    float64 // width / height
 	fRatioMax    float64
-	fPicSplitCnt int
-	fPicParallel int
 )
 
 func init() {
@@ -162,25 +168,27 @@ func init() {
 	flags.StringVarP(&fHTMLFile, "htmlFile", "F", "", "HTML file, must be utf-8 encoding")
 	flags.StringVarP(&fCrawlerFile, "crawlerFile", "f", "", "crawler result file")
 	flags.StringVarP(&fPubDir, "pubDir", "P", "./pub", "public dir for store demonstration HTML file")
+	flags.BoolVar(&fFlushPub, "flushPub", true, "flush public dir")
+	flags.IntVarP(&fPicSplitCnt, "splitCount", "c", 100, "max line count for one output file")
+	flags.IntVarP(&fPicParallel, "parallel", "p", 10, "max number of parallel exector")
 	flags.BoolVarP(&fOTrim, "outputTrim", "o", false, "print HTML after trimming")
 	flags.Float64VarP(&fWidthMin, "widthMin", "W", 64.0, "image min width")
 	flags.Float64VarP(&fHeightMin, "heightMin", "H", 64.0, "image min height")
 	flags.Float64VarP(&fRatioMin, "ratioMin", "r", 0.35, "image width/height min value")
 	flags.Float64VarP(&fRatioMax, "ratioMax", "R", 2.85, "image width/height max value")
-	flags.IntVarP(&fPicSplitCnt, "splitCount", "c", 100, "max line count for one output file")
-	flags.IntVarP(&fPicParallel, "parallel", "p", 10, "max number of parallel exector")
 	viper.BindPFlag("url", flags.Lookup("url"))
 	viper.BindPFlag("htmlDoc", flags.Lookup("htmlDoc"))
 	viper.BindPFlag("htmlFile", flags.Lookup("htmlFile"))
 	viper.BindPFlag("crawlerFile", flags.Lookup("crawlerFile"))
 	viper.BindPFlag("pubDir", flags.Lookup("pubDir"))
+	viper.BindPFlag("flushPub", flags.Lookup("flushPub"))
+	viper.BindPFlag("splitCount", flags.Lookup("splitCount"))
+	viper.BindPFlag("parallel", flags.Lookup("parallel"))
 	viper.BindPFlag("outputTrim", flags.Lookup("outputTrim"))
 	viper.BindPFlag("widthMin", flags.Lookup("widthMin"))
 	viper.BindPFlag("heightMin", flags.Lookup("heightMin"))
 	viper.BindPFlag("ratioMin", flags.Lookup("ratioMin"))
 	viper.BindPFlag("ratioMax", flags.Lookup("ratioMax"))
-	viper.BindPFlag("splitCount", flags.Lookup("splitCount"))
-	viper.BindPFlag("parallel", flags.Lookup("parallel"))
 }
 
 func parsePage() error {

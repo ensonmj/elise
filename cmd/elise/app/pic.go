@@ -98,7 +98,7 @@ var itemTmpl string = `
 {{define "item"}}
 			<div class="row list-group list-group-item panel panel-primary">
 				<div class="list-group-item panel-heading">
-					<a class="panel-title" href="{{.LP}}">{{.Title}}</a>
+					<a class="panel-title" target="_blank" href="{{.LP}}">{{.Title}}</a>
 				</div>
 				{{- range .ImgSGs}}
 				<div class="list-group-item">

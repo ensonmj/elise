@@ -1,6 +1,11 @@
 package app
 
-import "github.com/spf13/cobra"
+import (
+	"net/http"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
 
 var WebCmd = &cobra.Command{
 	Use:   "web",
@@ -10,6 +15,23 @@ var WebCmd = &cobra.Command{
 	},
 }
 
+var (
+	fPort string
+)
+
+func init() {
+	flags := WebCmd.Flags()
+	flags.StringVarP(&fPort, "port", "p", "8080", "the server port")
+	viper.BindPFlag("port", flags.Lookup("port"))
+}
+
 func web() error {
+	fs := http.FileServer(http.Dir(fPubDir))
+	http.Handle("/", fs)
+	addr := ":" + fPort
+	err := http.ListenAndServe(addr, nil)
+	if err != nil {
+		return err
+	}
 	return nil
 }

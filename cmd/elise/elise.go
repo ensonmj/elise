@@ -1,5 +1,7 @@
 package main
 
+//go:generate esc -pkg=assets -ignore=(swp|go)$DOLLAR -o=assets/assets.go assets
+
 import (
 	"net/http"
 	_ "net/http/pprof"
@@ -76,7 +78,5 @@ func main() {
 		panic(err)
 	}
 
-	if err := mainCmd.Execute(); err != nil {
-		panic(err)
-	}
+	mainCmd.Execute()
 }

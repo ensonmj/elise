@@ -1,0 +1,39 @@
+{{- define "header" }}
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Elise</title>
+		<link rel="stylesheet" href="/assets/stylesheets/bootstrap.min.css">
+		<link rel="stylesheet" href="/assets/stylesheets/bootstrap-theme.min.css">
+		<script src="/assets/javascripts/jquery.min.js"></script>
+		<script src="/assets/javascripts/bootstrap.min.js"></script>
+		<style type="text/css">
+			img {width: 100px; height: 100px; margin-right: 10px}
+		</style>
+	</head>
+	<body>
+		<div class="list-group container">
+{{end -}}
+
+{{define "item"}}
+			<div class="row list-group list-group-item panel panel-primary">
+				<div class="list-group-item panel-heading">
+					<a class="panel-title" target="_blank" href="{{.LP}}">{{.Title}}</a>
+				</div>
+				{{- range .ImgSGs}}
+				<div class="list-group-item">
+					<span class="badge">{{.Score}}</span>
+					{{- range .ImgItems}}
+					<img src="{{.Src}}" prim-width="{{.Width}}" prim-height="{{.Height}}" width-height-ratio="{{.Ratio}}">
+					{{- end}}
+				</div>
+				{{- end}}
+			</div>
+{{ end -}}
+
+{{define "footer"}}
+		</div>
+	</body>
+</html>
+{{ end -}}

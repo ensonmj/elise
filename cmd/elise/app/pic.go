@@ -19,6 +19,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	log "github.com/Sirupsen/logrus"
+	"github.com/ensonmj/elise/cmd/elise/assets"
 	"github.com/ensonmj/elise/cmd/elise/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -78,46 +79,6 @@ type PicDesc struct {
 	allScoredGrp ScoredGrpSlice
 }
 
-var tmplStr string = `
-{{- define "header" }}
-<!DOCTYPE html>
-<html>
-	<head>
-		<meta charset="utf-8">
-		<title>Elise</title>
-		<link rel="stylesheet" href="http://cdn.bootcss.com/bootstrap/3.3.0/css/bootstrap.min.css">
-		<link rel="stylesheet" href="http://cdn.bootcss.com/bootstrap/3.3.0/css/bootstrap-theme.min.css">
-		<script src="http://cdn.bootcss.com/jquery/1.11.1/jquery.min.js"></script>
-		<script src="http://cdn.bootcss.com/bootstrap/3.3.0/js/bootstrap.min.js"></script>
-		<style type="text/css">
-			img {width: 100px; height: 100px; margin-right: 10px}
-		</style>
-	</head>
-	<body>
-		<div class="list-group container">
-{{end -}}
-{{define "item"}}
-			<div class="row list-group list-group-item panel panel-primary">
-				<div class="list-group-item panel-heading">
-					<a class="panel-title" target="_blank" href="{{.LP}}">{{.Title}}</a>
-				</div>
-				{{- range .ImgSGs}}
-				<div class="list-group-item">
-					<span class="badge">{{.Score}}</span>
-					{{- range .ImgItems}}
-					<img src="{{.Src}}" prim-width="{{.Width}}" prim-height="{{.Height}}" width-height-ratio="{{.Ratio}}">
-					{{- end}}
-				</div>
-				{{- end}}
-			</div>
-{{ end -}}
-{{define "footer"}}
-		</div>
-	</body>
-</html>
-{{ end -}}
-`
-
 var PicCmd = &cobra.Command{
 	Use:   "pic",
 	Short: "Use pictures to describe the webpage.",
@@ -153,6 +114,7 @@ var (
 	fPicSplitCnt int
 	fPicParallel int
 	fOTrim       bool
+	fDevMode     bool
 	fWidthMin    float64
 	fHeightMin   float64
 	fRatioMin    float64 // width / height
@@ -170,6 +132,7 @@ func init() {
 	flags.IntVarP(&fPicSplitCnt, "splitCount", "c", 100, "max line count for one output file")
 	flags.IntVarP(&fPicParallel, "parallel", "p", 10, "max number of parallel exector")
 	flags.BoolVarP(&fOTrim, "outputTrim", "o", false, "print HTML after trimming")
+	flags.BoolVarP(&fDevMode, "devMode", "D", false, "develop mode, using local assets")
 	flags.Float64VarP(&fWidthMin, "widthMin", "W", 64.0, "image min width")
 	flags.Float64VarP(&fHeightMin, "heightMin", "H", 64.0, "image min height")
 	flags.Float64VarP(&fRatioMin, "ratioMin", "r", 0.35, "image width/height min value")
@@ -183,6 +146,7 @@ func init() {
 	viper.BindPFlag("splitCount", flags.Lookup("splitCount"))
 	viper.BindPFlag("parallel", flags.Lookup("parallel"))
 	viper.BindPFlag("outputTrim", flags.Lookup("outputTrim"))
+	viper.BindPFlag("devMode", flags.Lookup("devMode"))
 	viper.BindPFlag("widthMin", flags.Lookup("widthMin"))
 	viper.BindPFlag("heightMin", flags.Lookup("heightMin"))
 	viper.BindPFlag("ratioMin", flags.Lookup("ratioMin"))
@@ -286,6 +250,11 @@ func parsePage() error {
 		}
 
 		// create output HTML file
+		tmplStr, err := assets.FSString(fDevMode, "/assets/templates/layout.gohtml")
+		if err != nil {
+			log.WithError(err).Warn("Failed to read assets")
+			return err
+		}
 		tmpl, err := initTmpl(tmplStr)
 		if err != nil {
 			log.WithError(err).Warn("Failed to init template")
@@ -437,6 +406,11 @@ func parsePage() error {
 		picDesc.allScoredGrp.Title = title
 		log.WithField("picDesc", picDesc).Debug("Finished to parse one HTML")
 
+		tmplStr, err := assets.FSString(fDevMode, "/assets/templates/layout.gohtml")
+		if err != nil {
+			log.WithError(err).Warn("Failed to read assets")
+			return err
+		}
 		tmpl, err := initTmpl(tmplStr)
 		if err != nil {
 			log.WithError(err).Warn("Failed to init template")

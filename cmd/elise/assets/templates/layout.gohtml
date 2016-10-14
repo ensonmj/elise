@@ -1,49 +1,56 @@
 {{define "header" -}}
 <!DOCTYPE html>
 <html>
-	<head>
+    <head>
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-		<meta charset="utf-8">
-		<title>Elise</title>
+        <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<link rel="stylesheet" href="/assets/stylesheets/bootstrap.min.css">
-		<link rel="stylesheet" href="/assets/stylesheets/bootstrap-theme.min.css">
-		<style type="text/css">
-			img {width: 100px; height: 100px; margin-right: 10px}
-		</style>
-	</head>
-	<body>
-		<div id="main" class="list-group container">
+        <title>Elise</title>
+        <link rel="stylesheet" href="/assets/stylesheets/bootstrap.min.css">
+        <link rel="stylesheet" href="/assets/stylesheets/bootstrap-theme.min.css">
+        <style type="text/css">
+            img {width: 100px; height: 100px; margin-right: 10px}
+        </style>
+    </head>
+    <body>
+        <div id="main" class="list-group container">
 {{- end}}
 
 {{define "item"}}
-			<div class="row list-group list-group-item panel panel-primary">
-				<div class="list-group-item panel-heading">
-					<a class="panel-title" target="_blank" href="{{.LP}}">{{.Title}}</a>
-				</div>
-				{{- range .ImgSGs}}
-				<div class="list-group-item">
-					<span class="badge">{{.Score}}</span>
-					{{- range .ImgItems}}
-					<img class="lazy" data-original="{{.Src}}" prim-width="{{.Width}}" prim-height="{{.Height}}" width-height-ratio="{{.Ratio}}">
-					{{- end}}
-				</div>
-				{{- end}}
-			</div>
+            <div class="row list-group list-group-item panel panel-primary">
+                <div class="list-group-item panel-heading">
+                    <a class="panel-title" target="_blank" href="{{.LP}}">{{.Title}}</a>
+                </div>
+                {{- range .ImgSGs}}
+                <div class="list-group-item">
+                    <span class="badge">{{.Score}}</span>
+                    {{- range .ImgItems}}
+                    <img class="lazy" data-original="{{.Src}}" prim-width="{{.Width}}" prim-height="{{.Height}}" width-height-ratio="{{.Ratio}}">
+                    {{- end}}
+                </div>
+                {{- end}}
+            </div>
 {{- end}}
 
 {{define "footer"}}
-		</div>
+        </div>
         <script src="/assets/javascripts/jquery.min.js"></script>
         <script src="/assets/javascripts/bootstrap.min.js"></script>
         <script src="/assets/javascripts/lazyload.min.js"></script>
         <script type="text/javascript" charset="utf-8">
             $(function() {
+                $("img.lazy").on("_lazyload_appear", function(){
+                    if ($(this).attr("src").indexOf("data:image/png;") >=0) {
+                        var oldsrc = $(this).attr("data-original");
+                        var newsrc = "/images/?target=" + oldsrc;
+                        $(this).unbind("error").attr("src", newsrc)
+                    }
+                });
                 $("img.lazy").lazyload({
                     effect: "fadeIn"
                 });
             });
         </script>
-	</body>
+    </body>
 </html>
 {{- end}}

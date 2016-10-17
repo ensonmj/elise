@@ -113,6 +113,7 @@ var (
 	fHeightMin   float64
 	fRatioMin    float64 // width / height
 	fRatioMax    float64
+	fImgNumMin   int
 )
 
 func init() {
@@ -131,6 +132,7 @@ func init() {
 	flags.Float64VarP(&fHeightMin, "heightMin", "H", 64.0, "image min height")
 	flags.Float64VarP(&fRatioMin, "ratioMin", "r", 0.35, "image width/height min value")
 	flags.Float64VarP(&fRatioMax, "ratioMax", "R", 2.85, "image width/height max value")
+	flags.IntVarP(&fImgNumMin, "imgNumMin", "n", 4, "image num min value which won't be filtered")
 	viper.BindPFlag("url", flags.Lookup("url"))
 	viper.BindPFlag("htmlDoc", flags.Lookup("htmlDoc"))
 	viper.BindPFlag("htmlFile", flags.Lookup("htmlFile"))
@@ -145,6 +147,7 @@ func init() {
 	viper.BindPFlag("heightMin", flags.Lookup("heightMin"))
 	viper.BindPFlag("ratioMin", flags.Lookup("ratioMin"))
 	viper.BindPFlag("ratioMax", flags.Lookup("ratioMax"))
+	viper.BindPFlag("imgNumMin", flags.Lookup("imgNumMin"))
 }
 
 func parsePage() error {
@@ -572,6 +575,10 @@ func sortTree(tree []*html.Node) *PicDesc {
 
 func calcScore(n *html.Node) ScoredGrp {
 	imgItems := extractImg(n)
+	if len(imgItems) < fImgNumMin {
+		log.WithField("num", len(imgItems)).Debug("Image num under threshold")
+		return ScoredGrp{Score: 0}
+	}
 	return ScoredGrp{Score: len(imgItems), ImgItems: imgItems}
 }
 

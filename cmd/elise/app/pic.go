@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -41,43 +42,35 @@ type CrawlerResp struct {
 }
 
 type ImgItem struct {
-	Src                  string
-	Width, Height, Ratio float64
+	Src                             string
+	Top, Left, Width, Height, Ratio float64
 }
 
 type ScoredGrp struct {
 	Score    int
 	ImgItems []ImgItem
-	grpNode  *html.Node
 }
 
-type ScoredGrpSlice struct {
-	LP     string
-	Title  string
-	ImgSGs []*ScoredGrp
-}
+type ScoredGrpSlice []ScoredGrp
 
 func (sgs ScoredGrpSlice) Len() int {
-	return len(sgs.ImgSGs)
+	return len(sgs)
 }
 
 func (sgs ScoredGrpSlice) Swap(i, j int) {
-	sgs.ImgSGs[i], sgs.ImgSGs[j] = sgs.ImgSGs[j], sgs.ImgSGs[i]
+	sgs[i], sgs[j] = sgs[j], sgs[i]
 }
 
 // descending order
 func (sgs ScoredGrpSlice) Less(i, j int) bool {
-	return sgs.ImgSGs[j].Score < sgs.ImgSGs[i].Score
-}
-
-func (sgs ScoredGrpSlice) Length() int {
-	return len(sgs.ImgSGs)
+	return sgs[j].Score < sgs[i].Score
 }
 
 type PicDesc struct {
-	Title        string   `json:"title"`
-	Images       []string `json:"moreImages"`
-	allScoredGrp ScoredGrpSlice
+	LP      string
+	Title   string   `json:"title"`
+	Images  []string `json:"moreImages"`
+	SGSlice ScoredGrpSlice
 }
 
 var PicCmd = &cobra.Command{
@@ -218,17 +211,19 @@ func parsePage() error {
 							fmt.Printf("%s\037%s\036\n", lp, gohtml.Format(str))
 						}
 
-						picDesc, err := groupImg(doc)
-						if err != nil {
-							log.WithFields(log.Fields{
-								"index": index,
-								"err":   err,
-							}).Warn("Failed to group image")
+						tree := extractTree(doc)
+						if tree == nil {
+							log.WithField("index", index).Debug("Empty HTML body")
 							continue
 						}
+
+						picDesc := sortTree(tree)
+						if picDesc == nil {
+							log.WithField("index", index).Debug("Empty PicDesc")
+							continue
+						}
+						picDesc.LP = lp
 						picDesc.Title = title
-						picDesc.allScoredGrp.LP = lp
-						picDesc.allScoredGrp.Title = title
 						log.WithFields(log.Fields{
 							"index":   index,
 							"picDesc": picDesc,
@@ -278,7 +273,7 @@ func parsePage() error {
 			line := 0
 			index := 0
 			for picDesc := range picDescChan {
-				err = produceHTML(f, tmpl, picDesc.allScoredGrp)
+				err = produceHTML(f, tmpl, picDesc)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"resPath": resPath,
@@ -397,14 +392,19 @@ func parsePage() error {
 			fmt.Printf("%s\037%s\036\n", fURL, gohtml.Format(str))
 		}
 
-		picDesc, err := groupImg(doc)
-		if err != nil {
-			log.WithError(err).Warn("Failed to group image")
-			return err
+		tree := extractTree(doc)
+		if tree == nil {
+			log.Debug("Empty HTML body")
+			return errors.New("empty HTML body")
 		}
+
+		picDesc := sortTree(tree)
+		if picDesc == nil {
+			log.Debug("Empty PicDesc")
+			return errors.New("Empty PicDesc")
+		}
+		picDesc.LP = fURL
 		picDesc.Title = title
-		picDesc.allScoredGrp.LP = fURL
-		picDesc.allScoredGrp.Title = title
 		log.WithField("picDesc", picDesc).Debug("Finished to parse one HTML")
 
 		tmplStr, err := assets.FSString(fDevMode, "/assets/templates/layout.gohtml")
@@ -428,7 +428,7 @@ func parsePage() error {
 			return err
 		}
 		defer closeHTML(f, tmpl)
-		err = produceHTML(f, tmpl, picDesc.allScoredGrp)
+		err = produceHTML(f, tmpl, picDesc)
 		if err != nil {
 			log.WithError(err).Warn("Failed to produce HTML node")
 			return err
@@ -524,21 +524,146 @@ func trimBranch(doc *goquery.Document) {
 		if n.Data != "img" {
 			return true
 		}
-		// trim img node which is not so good
-		return filterImg(n)
+		// don't trim bad img node before isomorphisim parse
+		return false
 	})
 }
 
-func filterImg(n *html.Node) bool {
-	if filterImgbyRect(n) {
+func extractTree(doc *goquery.Document) []*html.Node {
+	sel := doc.Find("body")
+	if len(sel.Nodes) == 0 {
+		// empty HTML body
+		return nil
+	}
+
+	var tree []*html.Node
+	// only one body node
+	for _, n := range htmlutil.ExtractIsomorphisms(sel.Nodes[0], leafEqual) {
+		tree = append(tree, htmlutil.ExtractIsomorphicLeaf(n, leafEqual)...)
+	}
+	return tree
+}
+
+func leafEqual(c, n *html.Node) bool {
+	if c.Data != n.Data {
+		return false
+	}
+	return true
+}
+
+func sortTree(tree []*html.Node) *PicDesc {
+	var sgs ScoredGrpSlice
+	for _, n := range tree {
+		sg := calcScore(n)
+		if sg.Score < 1 {
+			log.WithField("score", sg.Score).Debug("Score too low")
+			continue
+		}
+
+		sgs = append(sgs, sg)
+	}
+	if sgs.Len() < 1 {
+		return nil
+	}
+	sort.Sort(sgs)
+
+	return &PicDesc{SGSlice: sgs}
+}
+
+func calcScore(n *html.Node) ScoredGrp {
+	imgItems := extractImg(n)
+	return ScoredGrp{Score: len(imgItems), ImgItems: imgItems}
+}
+
+//          c--...--img
+//         /
+// a--..--b--c--...--img
+//         \
+//          c--...--img
+func extractImg(n *html.Node) []ImgItem {
+	for n.FirstChild.Data != "img" && n.FirstChild.NextSibling == nil {
+		n = n.FirstChild
+	}
+	var imgItems []ImgItem
+	for curr := n.FirstChild; curr != nil; curr = curr.NextSibling {
+		for curr.Data != "img" {
+			curr = curr.FirstChild
+		}
+		img := normalizeImg(curr)
+		if filterImg(img) {
+			continue
+		}
+		imgItems = append(imgItems, img)
+	}
+
+	// remove duplicates
+	uniq := make(map[string]bool)
+	length := len(imgItems)
+	var totalWidth, totalHeight, totalRatio float64
+	for i := 0; i < length; i++ {
+		if _, ok := uniq[imgItems[i].Src]; !ok {
+			totalWidth += imgItems[i].Width
+			totalHeight += imgItems[i].Height
+			totalRatio += imgItems[i].Ratio
+
+			uniq[imgItems[i].Src] = true
+			continue
+		}
+		imgItems = append(imgItems[:i], imgItems[i+1:]...)
+		length--
+		i--
+	}
+	if length <= 2 {
+		return imgItems
+	}
+
+	// remove item which far away from average
+	avgWidth := totalWidth / float64(length)
+	avgHeight := totalHeight / float64(length)
+	avgRatio := totalRatio / float64(length)
+	for i := 0; i < length; i++ {
+		img := imgItems[i]
+		if !imgOnAverage(img, avgWidth, avgHeight, avgRatio) {
+			imgItems = append(imgItems[:i], imgItems[i+1:]...)
+			length--
+			i--
+		}
+	}
+
+	return imgItems
+}
+
+func normalizeImg(n *html.Node) ImgItem {
+	var img ImgItem
+	for _, attr := range n.Attr {
+		switch attr.Key {
+		case "prim-top":
+			img.Top, _ = strconv.ParseFloat(attr.Val, 64)
+		case "prim-left":
+			img.Left, _ = strconv.ParseFloat(attr.Val, 64)
+		case "prim-width":
+			img.Width, _ = strconv.ParseFloat(attr.Val, 64)
+		case "prim-height":
+			img.Height, _ = strconv.ParseFloat(attr.Val, 64)
+		case "prim-img":
+			img.Src = attr.Val
+		}
+	}
+	img.Ratio = img.Width / img.Height
+	log.WithField("imgItem", img).Debug("Normalize image")
+	return img
+}
+
+func filterImg(img ImgItem) bool {
+	if filterImgbyRect(img) {
 		return true
 	}
 
-	return filterImgbyExt(n)
+	return filterImgbyExt(img)
 }
 
-func filterImgbyRect(n *html.Node) bool {
-	_, _, width, height := getImgRect(n)
+func filterImgbyRect(img ImgItem) bool {
+	width, height := img.Width, img.Height
 	if width < fWidthMin || height < fHeightMin {
 		log.WithFields(log.Fields{
 			"width":  width,
@@ -546,11 +671,12 @@ func filterImgbyRect(n *html.Node) bool {
 		}).Debug("Filtered by width or height")
 		return true
 	}
-	ratio := width / height
+	ratio := img.Ratio
 	if ratio < fRatioMin || ratio > fRatioMax {
 		log.WithFields(log.Fields{
 			"width":  width,
 			"height": height,
+			"ratio":  ratio,
 		}).Debug("Filtered by width/height ratio")
 		return true
 	}
@@ -558,37 +684,10 @@ func filterImgbyRect(n *html.Node) bool {
 	return false
 }
 
-func getImgRect(n *html.Node) (top, left, width, height float64) {
-	for _, attr := range n.Attr {
-		switch attr.Key {
-		case "prim-top":
-			top, _ = strconv.ParseFloat(attr.Val, 64)
-		case "prim-left":
-			left, _ = strconv.ParseFloat(attr.Val, 64)
-		case "prim-width":
-			width, _ = strconv.ParseFloat(attr.Val, 64)
-		case "prim-height":
-			height, _ = strconv.ParseFloat(attr.Val, 64)
-		}
-	}
-	return
-}
-
-func filterImgbyExt(n *html.Node) bool {
-	var imgSrc string
-	for _, attr := range n.Attr {
-		if attr.Key == "prim-img" {
-			imgSrc = attr.Val
-			break
-		}
-	}
+func filterImgbyExt(img ImgItem) bool {
+	imgSrc := img.Src
 	if imgSrc == "" {
-		var buf bytes.Buffer
-		html.Render(&buf, n)
-		log.WithFields(log.Fields{
-			"node": n,
-			"HTML": buf.String(),
-		}).Warn("Can't find img src while filtering")
+		log.Warn("Can't find img src while filtering")
 		return true
 	}
 	// some img has no extention
@@ -604,118 +703,23 @@ func filterImgbyExt(n *html.Node) bool {
 	return false
 }
 
-func groupImg(doc *goquery.Document) (*PicDesc, error) {
-	sel := doc.Find("body")
-	if len(sel.Nodes) == 0 {
-		return nil, errors.New("empty HTML body")
-	}
-	// only one body node
-	subNodes := htmlutil.ExtractIsomorphisms(sel.Nodes[0], nodeSizeEqual)
-	var grpImgs []*html.Node
-	for _, n := range subNodes {
-		grpImgs = append(grpImgs, htmlutil.ExtractIsomorphicLeaf(n, nodeSizeEqual)...)
-	}
-	allScoredGrp := calcScore(grpImgs)
-	if allScoredGrp.Length() <= 0 {
-		return nil, errors.New("can't find any img node")
-	}
-	sort.Sort(allScoredGrp)
-
-	picDesc := &PicDesc{allScoredGrp: allScoredGrp}
-	return picDesc, nil
-}
-
-func nodeSizeEqual(c, n *html.Node) bool {
-	if c.Data != n.Data {
-		return false
-	} else if c.Data != "img" {
-		return false
-	}
-	_, _, cw, ch := getImgRect(c)
-	_, _, nw, nh := getImgRect(n)
-
-	if cw == nw && ch == nh {
+func imgOnAverage(img ImgItem, avgWidth, avgHeight, avgRatio float64) bool {
+	ratio := img.Ratio
+	if ratio == avgRatio {
 		return true
+	} else if math.Abs(ratio-avgRatio)/avgRatio > 0.1 {
+		return false
 	}
+
+	width := img.Width
+	height := img.Height
+	if math.Abs(width-avgWidth)/avgWidth > 0.1 || math.Abs(height-avgHeight)/avgHeight > 0.1 {
+		return false
+	}
+
 	return true
 }
 
-func calcScore(grpImgs []*html.Node) ScoredGrpSlice {
-	var allScoredGrp ScoredGrpSlice
-	for _, n := range grpImgs {
-		/*
-			var imgItems []ImgItem
-			var num int
-			num, imgItems = extractImg(n, imgItems)
-			if num == 0 {
-				continue
-			}
-		*/
-		imgItems := extractImg(n)
-		num := len(imgItems)
-
-		grp := &ScoredGrp{Score: num, ImgItems: imgItems, grpNode: n}
-		allScoredGrp.ImgSGs = append(allScoredGrp.ImgSGs, grp)
-	}
-	return allScoredGrp
-}
-
-func extractImg(n *html.Node) []ImgItem {
-	for n.FirstChild.Data != "img" && n.FirstChild.NextSibling == nil {
-		n = n.FirstChild
-	}
-	var imgItems []ImgItem
-	for curr := n.FirstChild; curr != nil; curr = curr.NextSibling {
-		for curr.Data != "img" {
-			curr = curr.FirstChild
-		}
-		var imgItem ImgItem
-		for _, attr := range curr.Attr {
-			switch attr.Key {
-			case "prim-width":
-				imgItem.Width, _ = strconv.ParseFloat(attr.Val, 64)
-			case "prim-height":
-				imgItem.Height, _ = strconv.ParseFloat(attr.Val, 64)
-			case "prim-img":
-				imgItem.Src = attr.Val
-			}
-		}
-		imgItem.Ratio = imgItem.Width / imgItem.Height
-		imgItems = append(imgItems, imgItem)
-	}
-	return imgItems
-}
-
-/*
-func extractImg(n *html.Node, imgItems []ImgItem) (int, []ImgItem) {
-	if n.Data == "img" {
-		var imgItem ImgItem
-		for _, attr := range n.Attr {
-			switch attr.Key {
-			case "prim-width":
-				imgItem.Width, _ = strconv.ParseFloat(attr.Val, 64)
-			case "prim-height":
-				imgItem.Height, _ = strconv.ParseFloat(attr.Val, 64)
-			case "prim-img":
-				imgItem.Src = attr.Val
-			}
-		}
-		imgItem.Ratio = imgItem.Width / imgItem.Height
-		imgItems = append(imgItems, imgItem)
-		return 1, imgItems
-	}
-
-	totalNum := 0
-	for curr := n.FirstChild; curr != nil; curr = curr.NextSibling {
-		var items []ImgItem
-		num := 0
-		num, items = extractImg(curr, items)
-		totalNum += num
-		imgItems = append(imgItems, items...)
-	}
-	return totalNum, imgItems
-}
-*/
 func initTmpl(tmpl string) (*template.Template, error) {
 	return template.New("tmpl").Parse(tmpl)
 }
@@ -730,8 +734,8 @@ func openHTML(filename string, tmpl *template.Template) (f *os.File, err error) 
 	return
 }
 
-func produceHTML(f *os.File, tmpl *template.Template, sgs ScoredGrpSlice) error {
-	return tmpl.ExecuteTemplate(f, "item", sgs)
+func produceHTML(f *os.File, tmpl *template.Template, picDesc *PicDesc) error {
+	return tmpl.ExecuteTemplate(f, "item", picDesc)
 }
 
 func closeHTML(f *os.File, tmpl *template.Template) error {

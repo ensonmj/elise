@@ -1,7 +1,9 @@
 ---
 elise_common: &ELISE_COMMON
   dump_html: true
-  script_name: elise_common.js
+  script_name:
+    - elise_common_prepare.js
+    - elise_common_parse.js
 ylzt.urls:
   script_name: ylzt.js
   output_file: ylzt.txt
@@ -19,4 +21,7 @@ bianlian_pc_netease.urls:
   output_file: bianlian_pc_netease.txt
   ignore: true
 wise_trade_83.urls:
+  <<: *ELISE_COMMON
+  ignore: true
+qnm.163.com.urls:
   <<: *ELISE_COMMON

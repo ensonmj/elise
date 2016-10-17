@@ -21,6 +21,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/ensonmj/elise/cmd/elise/assets"
 	"github.com/ensonmj/elise/cmd/elise/util"
+	"github.com/ensonmj/elise/htmlutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yosssi/gohtml"
@@ -441,8 +442,8 @@ func parsePage() error {
 // trim some node according selector
 func trimHTML(doc *goquery.Document) {
 	for _, selector := range []string{"head", "header", "footer", "aside",
-		"a", "script", "object", "nav", "form", "input", "style", "iframe",
-		"h1", "h2", "h3", "h4", "h5", "h6"} {
+		"script", "noscript", "style", "object", "iframe", "form", "input", "pre", "code",
+		"nav", "a", "p", "span", "h1", "h2", "h3", "h4", "h5", "h6", "strong", "em"} {
 		doc.Find(selector).Remove()
 	}
 }
@@ -511,7 +512,7 @@ func trimBranch(doc *goquery.Document) {
 	if len(sel.Nodes) == 0 {
 		return
 	}
-	trimNode(sel.Nodes[0], func(n *html.Node) bool {
+	htmlutil.TrimNode(sel.Nodes[0], func(n *html.Node) bool {
 		// trim TextNode, CommentNode etc, which is not ElementNode
 		if n.Type != html.ElementNode {
 			return true
@@ -526,18 +527,6 @@ func trimBranch(doc *goquery.Document) {
 		// trim img node which is not so good
 		return filterImg(n)
 	})
-}
-
-// trim node which not include img node
-func trimNode(n *html.Node, rmCheck func(n *html.Node) bool) {
-	var next *html.Node
-	for c := n.FirstChild; c != nil; c = next {
-		next = c.NextSibling
-		trimNode(c, rmCheck)
-	}
-	if rmCheck(n) {
-		n.Parent.RemoveChild(n)
-	}
 }
 
 func filterImg(n *html.Node) bool {
@@ -621,7 +610,11 @@ func groupImg(doc *goquery.Document) (*PicDesc, error) {
 		return nil, errors.New("empty HTML body")
 	}
 	// only one body node
-	grpImgs := splitTree(sel.Nodes[0])
+	subNodes := htmlutil.ExtractIsomorphisms(sel.Nodes[0], nodeSizeEqual)
+	var grpImgs []*html.Node
+	for _, n := range subNodes {
+		grpImgs = append(grpImgs, htmlutil.ExtractIsomorphicLeaf(n, nodeSizeEqual)...)
+	}
 	allScoredGrp := calcScore(grpImgs)
 	if allScoredGrp.Length() <= 0 {
 		return nil, errors.New("can't find any img node")
@@ -632,124 +625,34 @@ func groupImg(doc *goquery.Document) (*PicDesc, error) {
 	return picDesc, nil
 }
 
-func splitTree(root *html.Node) []*html.Node {
-	if !needSplit(root) {
-		return []*html.Node{root}
-	}
-	for root.FirstChild.NextSibling == nil {
-		root = root.FirstChild
-	}
-	var grpImgs []*html.Node
-
-	newRoot := &html.Node{Type: html.ElementNode, Data: "div"}
-	begin := root.FirstChild
-	var end, next *html.Node
-	for curr := root.FirstChild; curr != nil; curr = next {
-		curr.Parent = newRoot
-		next = curr.NextSibling
-
-		if next != nil {
-			if nodeEqual(curr, next) {
-				continue
-			}
-			curr.NextSibling = nil
-			next.PrevSibling = nil
-		}
-
-		end = curr
-		newRoot.FirstChild = begin
-		if begin != end {
-			newRoot.LastChild = end
-		}
-		grpImgs = append(grpImgs, newRoot)
-
-		begin = next
-		newRoot = &html.Node{Type: html.ElementNode, Data: "div"}
-	}
-
-	var allGrpImgs []*html.Node
-	for _, n := range grpImgs {
-		if !needSplit(n) {
-			allGrpImgs = append(allGrpImgs, n)
-			continue
-		}
-		allGrpImgs = append(allGrpImgs, splitTree(n)...)
-	}
-
-	return allGrpImgs
-}
-
-// please make sure c,n not nil
-func nodeEqual(c, n *html.Node) bool {
+func nodeSizeEqual(c, n *html.Node) bool {
 	if c.Data != n.Data {
 		return false
-	}
-	if c.Data == "img" {
-		return nodeSizeEqual(c, n)
-	}
-	if countSubNode(c) != countSubNode(n) {
+	} else if c.Data != "img" {
 		return false
 	}
-
-	ccurr := c.FirstChild
-	ncurr := n.FirstChild
-	for ccurr != nil && ncurr != nil {
-		if !nodeEqual(ccurr, ncurr) {
-			return false
-		}
-		ccurr = ccurr.NextSibling
-		ncurr = ncurr.NextSibling
-	}
-
-	return true
-}
-
-func nodeSizeEqual(c, n *html.Node) bool {
 	_, _, cw, ch := getImgRect(c)
 	_, _, nw, nh := getImgRect(n)
 
-	if cw != nw || ch != nh {
-		return false
+	if cw == nw && ch == nh {
+		return true
 	}
 	return true
-}
-
-func countSubNode(n *html.Node) int {
-	num := 0
-	for curr := n.FirstChild; curr != nil; curr = curr.NextSibling {
-		num++
-	}
-
-	return num
-}
-
-func needSplit(n *html.Node) bool {
-	if n == nil || n.FirstChild == nil {
-		return false
-	} else if n.FirstChild.NextSibling == nil {
-		return needSplit(n.FirstChild)
-	}
-
-	var next *html.Node
-	for curr := n.FirstChild; curr != n.LastChild; curr = next {
-		next = curr.NextSibling
-		if !nodeEqual(curr, next) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func calcScore(grpImgs []*html.Node) ScoredGrpSlice {
 	var allScoredGrp ScoredGrpSlice
 	for _, n := range grpImgs {
-		var imgItems []ImgItem
-		var num int
-		num, imgItems = extractImg(n, imgItems)
-		if num == 0 {
-			continue
-		}
+		/*
+			var imgItems []ImgItem
+			var num int
+			num, imgItems = extractImg(n, imgItems)
+			if num == 0 {
+				continue
+			}
+		*/
+		imgItems := extractImg(n)
+		num := len(imgItems)
 
 		grp := &ScoredGrp{Score: num, ImgItems: imgItems, grpNode: n}
 		allScoredGrp.ImgSGs = append(allScoredGrp.ImgSGs, grp)
@@ -757,6 +660,33 @@ func calcScore(grpImgs []*html.Node) ScoredGrpSlice {
 	return allScoredGrp
 }
 
+func extractImg(n *html.Node) []ImgItem {
+	for n.FirstChild.Data != "img" && n.FirstChild.NextSibling == nil {
+		n = n.FirstChild
+	}
+	var imgItems []ImgItem
+	for curr := n.FirstChild; curr != nil; curr = curr.NextSibling {
+		for curr.Data != "img" {
+			curr = curr.FirstChild
+		}
+		var imgItem ImgItem
+		for _, attr := range curr.Attr {
+			switch attr.Key {
+			case "prim-width":
+				imgItem.Width, _ = strconv.ParseFloat(attr.Val, 64)
+			case "prim-height":
+				imgItem.Height, _ = strconv.ParseFloat(attr.Val, 64)
+			case "prim-img":
+				imgItem.Src = attr.Val
+			}
+		}
+		imgItem.Ratio = imgItem.Width / imgItem.Height
+		imgItems = append(imgItems, imgItem)
+	}
+	return imgItems
+}
+
+/*
 func extractImg(n *html.Node, imgItems []ImgItem) (int, []ImgItem) {
 	if n.Data == "img" {
 		var imgItem ImgItem
@@ -785,7 +715,7 @@ func extractImg(n *html.Node, imgItems []ImgItem) (int, []ImgItem) {
 	}
 	return totalNum, imgItems
 }
-
+*/
 func initTmpl(tmpl string) (*template.Template, error) {
 	return template.New("tmpl").Parse(tmpl)
 }

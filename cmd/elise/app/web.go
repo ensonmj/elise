@@ -35,7 +35,7 @@ func init() {
 func web() error {
 	http.Handle("/", http.FileServer(http.Dir(fPubDir)))
 	http.Handle("/assets/", http.FileServer(assets.FS(fWebDevMode)))
-	http.Handle("/images/", newImgProxy())
+	http.Handle("/proxy", newImgProxy())
 
 	addr := ":" + fPort
 	return http.ListenAndServe(addr, nil)
@@ -43,7 +43,7 @@ func web() error {
 
 func newImgProxy() *httputil.ReverseProxy {
 	director := func(req *http.Request) {
-		path := strings.TrimPrefix(req.RequestURI, "/images/?target=")
+		path := strings.TrimPrefix(req.RequestURI, "/proxy?target=")
 		remote, _ := url.Parse(path)
 		req.URL = remote
 		req.Host = remote.Host

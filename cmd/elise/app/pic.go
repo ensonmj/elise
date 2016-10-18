@@ -32,9 +32,8 @@ import (
 var (
 	fWorkerNum int
 
-	fTerm bool
-
-	fCrawlerFile string
+	fInFile      string
+	fParsedJson  bool
 	fPubDir      string
 	fFlushPub    bool
 	fPicSplitCnt int
@@ -53,9 +52,8 @@ func init() {
 	flags := PicCmd.Flags()
 	flags.IntVarP(&fWorkerNum, "parallel", "p", 10, "number of parallel parse worker")
 
-	flags.BoolVarP(&fTerm, "term", "t", false, "read from stdin and output to stdout")
-
-	flags.StringVarP(&fCrawlerFile, "crawlerFile", "f", "", "crawler result file")
+	flags.StringVarP(&fInFile, "file", "f", "-", "crawler result file for parse or parse result file for demonstration, '-' stands for term")
+	flags.BoolVarP(&fParsedJson, "parsedJson", "j", false, "input file is parsed json")
 	flags.StringVarP(&fPubDir, "pubDir", "P", "./pub", "public dir for store demonstration HTML file")
 	flags.BoolVar(&fFlushPub, "flushPub", true, "flush public dir")
 	flags.IntVarP(&fPicSplitCnt, "splitCount", "c", 100, "max line count for one output file")
@@ -127,9 +125,6 @@ represent the webpage according to web structure and something else.`,
 				return err
 			}
 		}
-		if !fTerm && fCrawlerFile == "" {
-			return errors.New("Must specify 'crawlerFile' if 'term' is false")
-		}
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -142,7 +137,7 @@ func parsePage() error {
 	picDescChan := make(chan *PicDesc, fWorkerNum)
 	var writeEG errgroup.Group
 	writeEG.Go(func() error {
-		if fTerm {
+		if fInFile == "-" {
 			for picDesc := range picDescChan {
 				b, err := json.Marshal(picDesc)
 				if err != nil {
@@ -160,7 +155,7 @@ func parsePage() error {
 			cancel()
 		}
 
-		base := filepath.Base(fCrawlerFile)
+		base := filepath.Base(fInFile)
 		noSuffix := strings.TrimSuffix(base, filepath.Ext(base))
 		resPath := filepath.Join(fPubDir, noSuffix+".html")
 		f, err := openHTML(resPath, tmpl)
@@ -226,32 +221,45 @@ func parsePage() error {
 						}).Warn("Text format is wrong")
 						continue
 					}
-					var resp CrawlerResp
-					if err := json.Unmarshal([]byte(fields[1]), &resp); err != nil {
-						log.WithFields(log.Fields{
-							"index": index,
-							"text":  textInfo.Text,
-							"err":   err,
-						}).Warn("Failed to unmarshal")
-						continue
-					}
-					doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.HTML))
-					if err != nil {
-						log.WithFields(log.Fields{
-							"index": index,
-							"err":   err,
-						}).Warn("Failed to create document")
-						continue
-					}
+					var picDesc *PicDesc
+					var err error
+					if fParsedJson {
+						picDesc = new(PicDesc)
+						if err = json.Unmarshal([]byte(fields[1]), &picDesc); err != nil {
+							log.WithFields(log.Fields{
+								"index": index,
+								"err":   err,
+							}).Warn("Failed to unmarshal")
+							continue
+						}
+					} else {
+						var resp CrawlerResp
+						if err = json.Unmarshal([]byte(fields[1]), &resp); err != nil {
+							log.WithFields(log.Fields{
+								"index": index,
+								"text":  textInfo.Text,
+								"err":   err,
+							}).Warn("Failed to unmarshal")
+							continue
+						}
+						doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.HTML))
+						if err != nil {
+							log.WithFields(log.Fields{
+								"index": index,
+								"err":   err,
+							}).Warn("Failed to create document")
+							continue
+						}
 
-					lp := resp.LandingPage
-					picDesc, err := parseDoc(doc, lp)
-					if err != nil {
-						log.WithFields(log.Fields{
-							"index": index,
-							"err":   err,
-						}).Debug("Failed to parse document")
-						continue
+						lp := resp.LandingPage
+						picDesc, err = parseDoc(doc, lp)
+						if err != nil {
+							log.WithFields(log.Fields{
+								"index": index,
+								"err":   err,
+							}).Debug("Failed to parse document")
+							continue
+						}
 					}
 
 					atomic.AddUint64(textInfo.LineCnt, 1)
@@ -263,15 +271,15 @@ func parsePage() error {
 
 	var f *os.File
 	var err error
-	if fTerm {
+	if fInFile == "-" {
 		f = os.Stdin
 	} else {
-		f, err = os.Open(fCrawlerFile)
+		f, err = os.Open(fInFile)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"crawlerFile": fCrawlerFile,
-				"err":         err,
-			}).Fatal("Failed to open crawler result file")
+				"inFile": fInFile,
+				"err":    err,
+			}).Fatal("Failed to open file for read")
 			return err
 		}
 	}
@@ -301,7 +309,7 @@ SCANLOOP:
 
 	if err = sc.Err(); err != nil {
 		log.WithFields(log.Fields{
-			"file":         fCrawlerFile,
+			"file":         fInFile,
 			"readLineCnt":  lineCount,
 			"writeLineCnt": atomic.LoadUint64(textInfo.LineCnt),
 			"elapsed":      time.Since(jobStarted),
@@ -310,7 +318,7 @@ SCANLOOP:
 		return err
 	}
 	log.WithFields(log.Fields{
-		"file":         fCrawlerFile,
+		"file":         fInFile,
 		"readLineCnt":  lineCount,
 		"writeLineCnt": atomic.LoadUint64(textInfo.LineCnt),
 		"elapsed":      time.Since(jobStarted),

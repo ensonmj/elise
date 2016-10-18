@@ -57,9 +57,6 @@ func init() {
 	pflags.IntVarP(&fVerbose, "verbose", "v", 4, "log level: 0~5, 5 for debug detail")
 	pflags.StringVar(&fLogDir, "logDir", "./log", "dir for storage log")
 	pflags.BoolVar(&fFlushLog, "flushLog", false, "flush log dir for debug")
-	viper.BindPFlag("verbose", pflags.Lookup("verbose"))
-	viper.BindPFlag("logDir", pflags.Lookup("logDir"))
-	viper.BindPFlag("flushLog", pflags.Lookup("flushLog"))
 }
 
 func main() {
@@ -70,13 +67,6 @@ func main() {
 
 	viper.SetEnvPrefix("ELISE")
 	viper.AutomaticEnv()
-	viper.AddConfigPath("./conf")
-	viper.SetConfigName("config")
-	//viper.WatchConfig() // watching and re-reading config file
-	err := viper.ReadInConfig()
-	if err != nil {
-		panic(err)
-	}
 
 	mainCmd.Execute()
 }

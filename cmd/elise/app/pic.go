@@ -214,10 +214,6 @@ func parsePage() error {
 			for {
 				select {
 				case textInfo, ok := <-textInfoChan:
-					log.WithFields(log.Fields{
-						"index": index,
-						"text":  textInfo.Text,
-					}).Debug("Received text")
 					if !ok {
 						log.WithField("index", index).Debug("Worker exit")
 						return nil

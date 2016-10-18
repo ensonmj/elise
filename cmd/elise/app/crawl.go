@@ -21,6 +21,23 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var (
+	fParallel   int
+	fDataDir    string
+	fScriptDir  string
+	fOutputDir  string
+	fSplitCount int
+)
+
+func init() {
+	flags := CrawlCmd.Flags()
+	flags.IntVarP(&fParallel, "parallel", "p", 10, "max number of parallel exector")
+	flags.StringVar(&fDataDir, "dataDir", "./data", "dir for storage url files")
+	flags.StringVar(&fScriptDir, "scriptDir", "./script", "dir for storage scripts")
+	flags.StringVar(&fOutputDir, "outputDir", "./output", "dir for storage parse result files")
+	flags.IntVarP(&fSplitCount, "splitCount", "c", 10000, "max line count for one output file")
+}
+
 type FileInfo struct {
 	Filename string
 	Line     uint64
@@ -62,33 +79,18 @@ var CrawlCmd = &cobra.Command{
 				return err
 			}
 		}
+		viper.AddConfigPath("./conf")
+		viper.SetConfigName("config")
+		//viper.WatchConfig() // watching and re-reading config file
+		err := viper.ReadInConfig()
+		if err != nil {
+			return err
+		}
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return mainFunc()
 	},
-}
-
-var (
-	fParallel   int
-	fDataDir    string
-	fScriptDir  string
-	fOutputDir  string
-	fSplitCount int
-)
-
-func init() {
-	flags := CrawlCmd.Flags()
-	flags.IntVarP(&fParallel, "parallel", "p", 10, "max number of parallel exector")
-	flags.StringVar(&fDataDir, "dataDir", "./data", "dir for storage url files")
-	flags.StringVar(&fScriptDir, "scriptDir", "./script", "dir for storage scripts")
-	flags.StringVar(&fOutputDir, "outputDir", "./output", "dir for storage parse result files")
-	flags.IntVarP(&fSplitCount, "splitCount", "c", 10000, "max line count for one output file")
-	viper.BindPFlag("parallel", flags.Lookup("parallel"))
-	viper.BindPFlag("dataDir", flags.Lookup("dataDir"))
-	viper.BindPFlag("scriptDir", flags.Lookup("scriptDir"))
-	viper.BindPFlag("outputDir", flags.Lookup("outputDir"))
-	viper.BindPFlag("splitCount", flags.Lookup("splitCount"))
 }
 
 func mainFunc() error {

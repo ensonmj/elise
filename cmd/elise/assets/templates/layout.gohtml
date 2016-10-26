@@ -21,7 +21,12 @@
             <div class="row">
                 <div class="list-group list-group-item panel panel-primary">
                     <div class="list-group-item panel-heading">
-                        <a class="panel-title" target="_blank" href="{{.LP}}">{{.Title}}</a>
+                        <div class="row">
+                        <a class="panel-title col-xs-11" target="_blank" href="{{.OrigLP}}">{{.Title}}</a>
+                        <a class="panel-title col-xs-1" target="_blank" href="{{.LP}}">
+                            <span class="glyphicon glyphicon-home"></span>
+                        </a>
+                        </div>
                     </div>
                     {{- range .SGSlice}}
                     <div class="list-group-item">

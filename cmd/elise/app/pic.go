@@ -105,6 +105,7 @@ func (sgs ScoredGrpSlice) Less(i, j int) bool {
 }
 
 type PicDesc struct {
+	OrigLP  string `json:"origlp"`
 	LP      string `json:"lp"`
 	Title   string `json:"title"`
 	SGSlice ScoredGrpSlice
@@ -251,8 +252,9 @@ func parsePage() error {
 							continue
 						}
 
+						origLP := fields[0]
 						lp := resp.LandingPage
-						picDesc, err = parseDoc(doc, lp)
+						picDesc, err = parseDoc(doc, origLP, lp)
 						if err != nil {
 							log.WithFields(log.Fields{
 								"index": index,
@@ -327,18 +329,18 @@ SCANLOOP:
 	return nil
 }
 
-func parseDoc(doc *goquery.Document, url string) (*PicDesc, error) {
+func parseDoc(doc *goquery.Document, origLP, lp string) (*PicDesc, error) {
 	title := doc.Find("title").Text()
 
 	trimHTML(doc)
-	if err := normalizeHTML(doc, url); err != nil {
+	if err := normalizeHTML(doc, lp); err != nil {
 		log.WithError(err).Debug("Failed to normalize HTML")
 		return nil, err
 	}
 	trimBranch(doc)
 	if fOTrim {
 		str, _ := doc.Html()
-		fmt.Printf("%s\037%s\036\n", url, gohtml.Format(str))
+		fmt.Printf("%s\037%s\036\n", lp, gohtml.Format(str))
 	}
 
 	tree := extractTree(doc)
@@ -353,7 +355,8 @@ func parseDoc(doc *goquery.Document, url string) (*PicDesc, error) {
 		return nil, errors.New("Empty PicDesc")
 	}
 
-	picDesc.LP = url
+	picDesc.OrigLP = origLP
+	picDesc.LP = lp
 	picDesc.Title = title
 	log.WithField("picDesc", picDesc).Debug("Finished to parse one document")
 

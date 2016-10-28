@@ -21,7 +21,6 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	log "github.com/Sirupsen/logrus"
 	"github.com/ensonmj/elise/cmd/elise/assets"
-	"github.com/ensonmj/elise/cmd/elise/util"
 	"github.com/ensonmj/elise/htmlutil"
 	"github.com/spf13/cobra"
 	"github.com/yosssi/gohtml"
@@ -34,8 +33,8 @@ var (
 
 	fInFile      string
 	fParsedJson  bool
+	fTmplFile    string
 	fPubDir      string
-	fFlushPub    bool
 	fPicSplitCnt int
 
 	fWidthMin  float64
@@ -54,8 +53,8 @@ func init() {
 
 	flags.StringVarP(&fInFile, "file", "f", "-", "crawler result file for parse or parse result file for demonstration, '-' stands for term")
 	flags.BoolVarP(&fParsedJson, "parsedJson", "j", false, "input file is parsed json")
+	flags.StringVarP(&fTmplFile, "tmplFile", "t", "/assets/templates/layout.tmpl", "template file which used to produce demonstration HTML")
 	flags.StringVarP(&fPubDir, "pubDir", "P", "./pub", "public dir for store demonstration HTML file")
-	flags.BoolVar(&fFlushPub, "flushPub", true, "flush public dir")
 	flags.IntVarP(&fPicSplitCnt, "splitCount", "c", 100, "max line count for one output file")
 
 	flags.Float64VarP(&fWidthMin, "widthMin", "W", 64.0, "image min width")
@@ -119,10 +118,6 @@ represent the webpage according to web structure and something else.`,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := os.Stat(fPubDir); os.IsNotExist(err) {
 			if err = os.Mkdir(fPubDir, os.ModePerm); err != nil {
-				return err
-			}
-		} else if fFlushPub {
-			if err := util.FlushDir(fPubDir); err != nil {
 				return err
 			}
 		}
@@ -198,6 +193,16 @@ func parsePage() error {
 			}
 		}
 		closeHTML(f, tmpl)
+
+		// remove extra file if exists
+		for {
+			index++
+			resPath = filepath.Join(fPubDir, noSuffix+"_"+strconv.Itoa(index)+".html")
+			if err := os.Remove(resPath); os.IsNotExist(err) {
+				break
+			}
+		}
+
 		return nil
 	})
 
@@ -650,7 +655,7 @@ func imgOnAverage(img ImgItem, avgWidth, avgHeight, avgRatio float64) bool {
 
 func initTmpl(devMode bool) (*template.Template, error) {
 	// create output HTML file
-	tmplStr, err := assets.FSString(devMode, "/assets/templates/layout.gohtml")
+	tmplStr, err := assets.FSString(devMode, fTmplFile)
 	if err != nil {
 		return nil, err
 	}

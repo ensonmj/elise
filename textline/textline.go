@@ -13,8 +13,8 @@ import (
 )
 
 type TLManager struct {
-	LineProc
-	FileSave
+	LineProcessor
+	FileStorage
 	inPath       string
 	numProc      int
 	feedChan     chan LineInfo
@@ -26,25 +26,25 @@ type TLManager struct {
 	fileInfoList []*FileInfo
 }
 
-type LineProc interface {
+type LineProcessor interface {
 	Process(line []byte) (interface{}, error)
 }
 
 type FileInfo struct {
-	FileSave
-	FileName   string
+	FileStorage
+	FilePath   string
 	LineCnt    uint64
 	writerChan chan LineInfo
 	started    time.Time
 }
 
-type FileSave interface {
+type FileStorage interface {
 	PrepareOnce() error
-
 	BeforeWrite(fn string) error
-	Prepare(num int) error
+	PreWrite(num int) error
 	Write(data interface{}) error
-	AfterWrite(fn string) error
+	PostWrite(num int) error
+	AfterWrite() error
 }
 
 type LineInfo struct {
@@ -54,21 +54,13 @@ type LineInfo struct {
 	Data  interface{}
 }
 
-func newFileInfo(fn string, num int, fileSave FileSave) *FileInfo {
-	return &FileInfo{
-		FileSave:   fileSave,
-		FileName:   fn,
-		writerChan: make(chan LineInfo, num),
-	}
-}
-
-func New(path string, num int, lineProc LineProc, fileSave FileSave) *TLManager {
+func New(path string, num int, lineProc LineProcessor, fileSave FileStorage) *TLManager {
 	m := &TLManager{
-		LineProc: lineProc,
-		FileSave: fileSave,
-		inPath:   path,
-		numProc:  num,
-		feedChan: make(chan LineInfo, num),
+		LineProcessor: lineProc,
+		FileStorage:   fileSave,
+		inPath:        path,
+		numProc:       num,
+		feedChan:      make(chan LineInfo, num),
 	}
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	m.registerLineProc()
@@ -90,9 +82,11 @@ func (m *TLManager) registerLineProc() {
 					data, err := m.Process(lineInfo.Bytes)
 					if err != nil {
 						log.WithFields(log.Fields{
-							"index": index,
-							"err":   err,
-						}).Debug("Failed to process one line")
+							"index":    index,
+							"filePath": lineInfo.FilePath,
+							"row":      lineInfo.Index,
+							"err":      err,
+						}).Warn("Failed to process one line")
 						continue
 					}
 
@@ -118,8 +112,7 @@ func (m *TLManager) FeedLine() error {
 	}
 
 	if m.inPath == "-" {
-		fi := newFileInfo("-", m.numProc, m.FileSave)
-		return m.readFile(os.Stdin, fi)
+		return m.readFile(m.inPath)
 	}
 
 	err = filepath.Walk(m.inPath, func(path string, fi os.FileInfo, err error) error {
@@ -131,18 +124,7 @@ func (m *TLManager) FeedLine() error {
 			"fileName": fi.Name(),
 		}).Debug("Get file path for read")
 
-		f, err := os.Open(path)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"path": path,
-				"err":  err,
-			}).Warn("Failed to open file for read")
-			return err
-		}
-		defer f.Close()
-
-		nfi := newFileInfo(path, m.numProc, m.FileSave)
-		return m.readFile(f, nfi)
+		return m.readFile(path)
 	})
 
 	if err != nil {
@@ -152,17 +134,37 @@ func (m *TLManager) FeedLine() error {
 		}).Warn("Failed to walk dir")
 		return err
 	}
+
 	log.WithFields(log.Fields{
 		"inPath":  m.inPath,
 		"elapsed": time.Since(m.started),
 	}).Info("Finished to feed all text line")
-
 	return nil
 }
 
-func (m *TLManager) readFile(f *os.File, fi *FileInfo) error {
+func (m *TLManager) readFile(path string) error {
+	var f *os.File
+	var err error
+	if path == "-" {
+		f = os.Stdin
+	} else {
+		if f, err = os.Open(path); err != nil {
+			log.WithFields(log.Fields{
+				"path": path,
+				"err":  err,
+			}).Warn("Failed to open file for read")
+			return err
+		}
+		defer f.Close()
+	}
+
+	fi := &FileInfo{
+		FileStorage: m.FileStorage,
+		FilePath:    path,
+		writerChan:  make(chan LineInfo, m.numProc),
+		started:     time.Now(),
+	}
 	m.registerPostProc(fi)
-	fi.started = time.Now()
 	m.fileInfoList = append(m.fileInfoList, fi)
 
 	var lineCount uint64
@@ -173,12 +175,16 @@ SCANLOOP:
 		select {
 		case <-m.ctx.Done():
 			log.WithFields(log.Fields{
-				"inPath": fi.FileName,
+				"inPath": fi.FilePath,
 				"err":    m.ctx.Err(),
-			}).Warn("Partial finished to process file")
+			}).Warn("Partial finished to process one file")
 			break SCANLOOP
 		default:
-			lineInfo := LineInfo{FileInfo: fi, Index: lineCount}
+			lineInfo := LineInfo{
+				FileInfo: fi,
+				Index:    lineCount,
+				Bytes:    make([]byte, len(sc.Bytes())),
+			}
 			copy(lineInfo.Bytes, sc.Bytes())
 			m.feedChan <- lineInfo
 			lineCount++
@@ -187,19 +193,19 @@ SCANLOOP:
 
 	if err := sc.Err(); err != nil {
 		log.WithFields(log.Fields{
-			"file":        fi.FileName,
+			"file":        fi.FilePath,
 			"readLineCnt": lineCount,
 			"elapsed":     time.Since(fi.started),
 			"err":         err,
 		}).Warn("Failed to read line from file")
 		return err
 	}
+
 	log.WithFields(log.Fields{
-		"file":        fi.FileName,
+		"file":        fi.FilePath,
 		"readLineCnt": lineCount,
 		"elapsed":     time.Since(fi.started),
 	}).Info("Finished to read one file")
-
 	return nil
 }
 
@@ -208,8 +214,8 @@ func (m *TLManager) registerPostProc(fi *FileInfo) {
 		// don't return immediately if error occur
 		// we must drain 'writerChan' before exit
 		var err error
-		if err = fi.BeforeWrite(fi.FileName); err != nil {
-			log.WithError(err).Warn("Failed to prepare file")
+		if err = fi.BeforeWrite(fi.FilePath); err != nil {
+			log.WithError(err).Warn("Failed to beforewrite")
 			m.cancel()
 		}
 
@@ -220,8 +226,8 @@ func (m *TLManager) registerPostProc(fi *FileInfo) {
 				continue
 			}
 
-			if err = fi.Prepare(lineCount); err != nil {
-				log.WithError(err).Warn("Failed to prepare file")
+			if err = fi.PreWrite(lineCount); err != nil {
+				log.WithError(err).Warn("Failed to prewrite")
 				m.cancel()
 				continue
 			}
@@ -230,16 +236,21 @@ func (m *TLManager) registerPostProc(fi *FileInfo) {
 				m.cancel()
 				continue
 			}
+			if err = fi.PostWrite(lineCount); err != nil {
+				log.WithError(err).Warn("Failed to postwrite")
+				m.cancel()
+				continue
+			}
 			lineCount++
 		}
 
-		if err = fi.AfterWrite(fi.FileName); err != nil {
-			log.WithError(err).Warn("Failed to prepare file")
+		if err = fi.AfterWrite(); err != nil {
+			log.WithError(err).Warn("Failed to afterwrite")
 			m.cancel()
 		}
 
 		log.WithFields(log.Fields{
-			"file":         fi.FileName,
+			"file":         fi.FilePath,
 			"writeLineCnt": atomic.LoadUint64(&fi.LineCnt),
 			"elapsed":      time.Since(fi.started),
 		}).Info("Finished to save result for one file")

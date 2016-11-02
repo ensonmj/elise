@@ -22,20 +22,12 @@ import (
 )
 
 var (
-	fParallel   int
-	fDataDir    string
-	fScriptDir  string
-	fOutputDir  string
-	fSplitCount int
+	fCrawlScriptDir string
 )
 
 func init() {
 	flags := CrawlCmd.Flags()
-	flags.IntVarP(&fParallel, "parallel", "p", 10, "max number of parallel exector")
-	flags.StringVar(&fDataDir, "dataDir", "./data", "dir for storage url files")
-	flags.StringVar(&fScriptDir, "scriptDir", "./script", "dir for storage scripts")
-	flags.StringVar(&fOutputDir, "outputDir", "./output", "dir for storage parse result files")
-	flags.IntVarP(&fSplitCount, "splitCount", "c", 10000, "max line count for one output file")
+	flags.StringVar(&fCrawlScriptDir, "scriptDir", "./script", "dir for storage scripts")
 }
 
 type FileInfo struct {
@@ -62,22 +54,11 @@ var CrawlCmd = &cobra.Command{
 	Use:   "crawl",
 	Short: "Crawl parse webpage based on javascripts, then save parse results.",
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		if _, err := os.Stat(fDataDir); os.IsNotExist(err) {
+		if _, err := os.Stat(fCrawlScriptDir); os.IsNotExist(err) {
 			log.WithFields(log.Fields{
-				"dataDir": fDataDir,
-			}).Fatal("No data dir")
-			return err
-		}
-		if _, err := os.Stat(fScriptDir); os.IsNotExist(err) {
-			log.WithFields(log.Fields{
-				"scriptDir": fScriptDir,
+				"scriptDir": fCrawlScriptDir,
 			}).Fatal("No script dir")
 			return err
-		}
-		if _, err := os.Stat(fOutputDir); os.IsNotExist(err) {
-			if err = os.Mkdir(fOutputDir, os.ModePerm); err != nil {
-				return err
-			}
 		}
 		viper.AddConfigPath("./conf")
 		viper.SetConfigName("config")
@@ -97,10 +78,10 @@ func mainFunc() error {
 	var infoeg errgroup.Group
 	var retryeg errgroup.Group
 
-	infoChan := make(chan URLInfo, fParallel)
-	retryNum := fParallel/2 + 1
+	infoChan := make(chan URLInfo, fEliseParallel)
+	retryNum := fEliseParallel/2 + 1
 	retryChan := make(chan URLInfo, retryNum)
-	for i := 0; i < fParallel; i++ {
+	for i := 0; i < fEliseParallel; i++ {
 		index := i
 		infoeg.Go(func() error {
 		RESTART:
@@ -186,8 +167,8 @@ func mainFunc() error {
 		})
 	}
 
-	log.WithField("dataDir", fDataDir).Debug("Start to traversal data files")
-	err := filepath.Walk(fDataDir, walkFile(infoChan))
+	log.WithField("dataDir", fEliseInPath).Debug("Start to traversal data files")
+	err := filepath.Walk(fEliseInPath, walkFile(infoChan))
 	close(infoChan)
 	infoeg.Wait()
 	close(retryChan)
@@ -341,10 +322,10 @@ func walkFile(infoChan chan<- URLInfo) func(path string, f os.FileInfo, err erro
 		var scriptPath []string
 		switch scripts := conf["script_name"].(type) {
 		case string:
-			scriptPath = append(scriptPath, filepath.Join(fScriptDir, scripts))
+			scriptPath = append(scriptPath, filepath.Join(fCrawlScriptDir, scripts))
 		case []interface{}:
 			for _, v := range scripts {
-				scriptPath = append(scriptPath, filepath.Join(fScriptDir, v.(string)))
+				scriptPath = append(scriptPath, filepath.Join(fCrawlScriptDir, v.(string)))
 			}
 		default:
 			log.WithFields(log.Fields{
@@ -368,7 +349,7 @@ func walkFile(infoChan chan<- URLInfo) func(path string, f os.FileInfo, err erro
 
 		ctx, cancel := context.WithCancel(context.Background())
 		// write output file routine
-		resChan := make(chan URLRes, fParallel+fParallel/2+1)
+		resChan := make(chan URLRes, fEliseParallel+fEliseParallel/2+1)
 		// TODO: make sure finish to write output file before exit
 		go func() {
 			// create output file
@@ -379,7 +360,7 @@ func walkFile(infoChan chan<- URLInfo) func(path string, f os.FileInfo, err erro
 				resFilename = filename
 			}
 			noSuffix := strings.TrimSuffix(resFilename, filepath.Ext(resFilename))
-			resPath := filepath.Join(fOutputDir, noSuffix+".txt")
+			resPath := filepath.Join(fEliseOutputDir, noSuffix+".txt")
 			resFile, err := os.Create(resPath)
 			if err != nil {
 				log.WithFields(log.Fields{
@@ -395,11 +376,11 @@ func walkFile(infoChan chan<- URLInfo) func(path string, f os.FileInfo, err erro
 				data, _ := json.Marshal(res.Res)
 				resFile.WriteString(fmt.Sprintf("%s\t%s\n", res.URL, string(data)))
 				line++
-				if line >= fSplitCount {
+				if line >= fEliseSplitCnt {
 					resFile.Close()
 					line = 0
 					index++
-					resPath = filepath.Join(fOutputDir, noSuffix+"_"+strconv.Itoa(index)+".txt")
+					resPath = filepath.Join(fEliseOutputDir, noSuffix+"_"+strconv.Itoa(index)+".txt")
 					resFile, err = os.Create(resPath)
 					if err != nil {
 						log.WithFields(log.Fields{

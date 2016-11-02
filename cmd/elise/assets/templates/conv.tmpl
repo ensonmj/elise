@@ -1,0 +1,298 @@
+{{define "header" -}}
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset>
+{{- end}}
+
+{{define "item"}}
+    <url>
+        <loc>{{.URL}}</loc>
+        <data>
+            <name>{{.Name}}</name>
+            <outerID>{{.OuterID}}</outerID>
+            {{- if .SellerName}}
+            <sellerName>{{.SellerName}}</sellerName>
+            {{- end}}
+            {{- if .SellerSite}}
+                <sellerSiteUrl>{{.SellerSite}}</sellerSiteUrl>
+            {{- end}}
+            {{- if .Logo }}
+            <logo>{{.Logo}}</logo>
+            {{- end}}
+            {{- if .Title}}
+            <title>{{.Title}}</title>
+            {{- end}}
+            {{- if .Image}}
+            <image>{{.Image}}</image>
+            {{- end}}
+            {{- if .MoreImages}}
+            <moreImages>
+                {{- range .MoreImages}}
+                <img index="{{.Index}}">{{.URL}}</img>
+                {{- end}}
+            </moreImages>
+            {{- end}}
+            {{- if .Price}}
+            <price>{{.Price}}</price>
+            {{- end}}
+            {{- if .Value}}
+            <value>{{.Value}}</value>
+            {{- end}}
+            {{- if .Saving}}
+            <saving>{{.Saving}}</saving>
+            {{- end}}
+            {{- if .Promotion}}
+            <promotion>{{.Promotion}}</promotion>
+            {{- end}}
+            {{- if .RemainingDays}}
+            <remainingDays>{{.RemainingDays}}</remainingDays>
+            {{- end}}
+            {{- if .Brand}}
+            <brand>{{.Brand}}</brand>
+            {{- end}}
+            {{- if .BrandURL}}
+            <brandUrl>{{.BrandURL}}</brandUrl>
+            {{- end}}
+            {{- if .TargetURL}}
+            <targetUrl>{{.TargetURL}}</targetUrl>
+            {{- end}}
+            {{- if .Category}}
+            <category>{{.Category}}</category>
+            {{- end}}
+            {{- if .SubCategory}}
+            <subCategory>{{.SubCategory}}</subCategory>
+            {{- end}}
+            {{- if .ThirdCategory}}
+            <thirdCategory>{{.ThirdCategory}}</thirdCategory>
+            {{- end}}
+            {{- if .FourthCategory}}
+            <fourthCategory>{{.FourthCategory}}</fourthCategory>
+            {{- end}}
+            {{- if .CategoryURL}}
+            <categoryUrl>{{.CategoryURL}}</categoryUrl>
+            {{- end}}
+            {{- if .SubCategoryURL}}
+            <subCategoryUrl>{{.SubCategoryURL}}</subCategoryUrl>
+            {{- end}}
+            {{- if .ThirdCategoryURL}}
+            <thirdCategoryUrl>{{.ThirdCategoryURL}}</thirdCategoryUrl>
+            {{- end}}
+            {{- if .FourthCategoryURL}}
+            <fourthCategoryUrl>{{.FourthCategoryURL}}</fourthCategoryUrl>
+            {{- end}}
+            {{- if .StartTime}}
+            <startTime>{{.StartTime}}</startTime>
+            {{- end}}
+            {{- if .EndTime}}
+            <endTime>{{.EndTime}}</endTime>
+            {{- end}}
+            {{- if .Model}}
+            <model>{{.Model}}</model>
+            {{- end}}
+            {{- if .Services}}
+            <services>{{.Services}}</services>
+            {{- end}}
+            {{- if .Tags}}
+            <tags>{{.Tags}}</tags>
+            {{- end}}
+            {{- if .Availability}}
+            <availability>{{.Availability}}</availability>
+            {{- end}}
+            {{- if .Stock}}
+            <stock>{{.Stock}}</stock>
+            {{- end}}
+            {{- if .Bought}}
+            <bought>{{.Bought}}</bought>
+            {{- end}}
+            {{- if .TargetRegion}}
+            <targetRegion>{{.TargetRegion}}</targetRegion>
+            {{- end}}
+            {{- if .Attrs}}
+            <choice>
+                {{- range .Attrs}}
+                <attribute>
+                    <key>{{.Key}}</key>
+                    <value>{{.Value}}</value>
+                </attribute>
+                {{- end}}
+            </choice>
+            {{- end}}
+        </data>
+    </url>
+{{- end}}
+
+{{define "footer"}}
+</urlset>
+{{- end}}
+
+<!-- <?xml version="1.0" encoding="UTF-8"?> -->
+<!-- <urlset><!--产品集--> -->
+<!--     <url><!--第一个产品--> -->
+<!-- <!--以下为必填字段--> -->
+<!--         <loc><![CDATA[http://item.xxxx.com/item-727512.html?YTAG=2.1215101720001]]></loc><!--必填，产品页面url，可用于设置落地页、提取产品信息，1024字符以内--> -->
+<!--         <data> -->
+<!--                 <name><![CDATA[联想X230笔记本电脑]]></name><!--必填，产品名称，可用于拼接关键词、拼接创意、触发多属性定向，70字符以内--> -->
+<!--                 <outerID><![CDATA[2351132]]></outerID><!--必填，商家内部唯一ID，产品唯一性标记:若不对接,系统会自动用loc填充,此时要求每个产品的loc必须唯一，1024字符以内--> -->
+<!-- <!--以下为选填字段--> -->
+<!--                 <sellerName><![CDATA[亚马逊]]></sellerName><!--选填，商家站点的名称，可用于拼接创意、拼接关键词，12字符以内--> -->
+<!--                 <sellerSiteUrl><![CDATA[http://www.xxxx.com/]]></sellerSiteUrl><!--选填，商家站点url,可用于设置创意显示url,1024字符以内--> -->
+<!--                 <logo><![CDATA[http://www.baidu.com/img/bdlogo.gif]]></logo><!--选填，商家logo网址,可用于拼接展示类创意和商品橱窗创意,1024字符以内--> -->
+<!--                 <title><![CDATA[商务利器 7200转高速硬盘 原装4G内存！]]></title><!--选填，产品描述,可用于拼接创意、触发多属性定向,500字符以内--> -->
+<!--                 <image><![CDATA[http://item.xxxx.com/item-727512.html?YTAG=2.1215101720001]]></image><!--选填，产品相关图片的网址,图文样式必填字段,1024字符以内--> -->
+<!--                 <moreImages><img index="1">http://t3.dpfile.com/tuan/20130629/261916_130170003950000001.jpg</img><img index="2">http://t3.dpfile.com/tuan/20130629/261916_130170003950000002.jpg</img></moreImages><!--选填，更多产品图片的网址,每张图片1M以内--> -->
+<!--                 <price>4899.00</price><!--选填，产品现价，可用于拼接创意，10字符以内--> -->
+<!--                 <value>5899.00</value><!--选填，产品原价，可用于拼接创意，10字符以内--> -->
+<!--                 <saving>1000.00</saving><!--选填，节省的钱:新扩充的字段,系统自动根据price-value计算,可不提交，可用于拼接创意，10字符以内--> -->
+<!--                 <promotion><![CDATA[赠送礼品]]></promotion><!--选填，促销活动:多个促销活动用;分隔，可用于拼接创意，1024字符以内--> -->
+<!--                 <remainingDays>68</remainingDays><!--选填，推广剩余天数 :新增字段，可用于拼接创意，50字符以内--> -->
+<!--                 <brand><![CDATA[Thinkpad/联想]]></brand><!--选填，产品品牌，可用于拼接关键词、拼接创意、设置筛选条件、触发多属性定向，75字符以内--> -->
+<!--                 <brandUrl><![CDATA[http://www.xxxx.com/]]></brandUrl><!--选填，品牌页url:新增字段，方便投放品牌类别页，1024字符以内--> -->
+<!--                 <targetUrl><![CDATA[http://item.xxxx.com/item-727512.html?YTAG=2.1215101720001]]></targetUrl><!--选填，创意跳转的目标网址:如果希望跳转到单品页,可以与loc填充同样的内容，可用于设置访问url，1024字符以内--> -->
+<!--                 <category><![CDATA[3C数码]]></category><!--选填，一级分类，可用于设置筛选条件、拼接关键词、触发多属性定向，25字符以内--> -->
+<!--                 <subCategory><![CDATA[电脑]]></subCategory><!--选填，二级分类，可用于设置筛选条件、拼接关键词、触发多属性定向，25字符以内--> -->
+<!--                 <thirdCategory><![CDATA[笔记本电脑]]></thirdCategory><!--选填，三级分类，可用于设置筛选条件、拼接关键词、触发多属性定向，25字符以内--> -->
+<!--                 <fourthCategory><![CDATA[商务笔记本电脑]]></fourthCategory><!--选填，四级分类，可用于设置筛选条件、拼接关键词、触发多属性定向，25字符以内--> -->
+<!--                 <categoryUrl><![CDATA[http://searchex.xxxx.com/html?YTAG=3.70]]></categoryUrl><!--选填，一级分类url:新增字段，方便投放类别页，1024字符以内--> -->
+<!--                 <subCategoryUrl><![CDATA[http://searchex.xxxx.com/html?YTAG=3.71]]></subCategoryUrl><!--选填，二级分类url:新增字段，方便投放类别页，1024字符以内--> -->
+<!--                 <thirdCategoryUrl><![CDATA[http://searchex.xxxx.com/html?YTAG=3.72]]></thirdCategoryUrl><!--选填，三级分类url:新增字段，方便投放类别页，1024字符以内--> -->
+<!--                 <fourthCategoryUrl><![CDATA[http://searchex.xxxx.com/html?YTAG=3.73]]></fourthCategoryUrl><!--选填，四级分类url:新增字段，方便投放类别页，1024字符以内--> -->
+<!--                 <startTime>2013-8-2 0:00:00</startTime><!--选填，推广开始时间:支持时间戳、yyyy/mm/dd hh:mm:ss、yyyy-mm-dd hh:mm:ss，控制自动上线，25字符以内--> -->
+<!--                 <endTime>2030-12-29 23:59:59</endTime><!--选填，推广结束时间:支持时间戳、yyyy/mm/dd hh:mm:ss、yyyy-mm-dd hh:mm:ss，，控制自动上线，25字符以内--> -->
+<!--                 <model><![CDATA[X230i(23063P4)]]></model><!--选填，型号:新增字段,电商品类核心字段,可用于拼接关键词、触发多属性定向，100字符以内--> -->
+<!--                 <services><![CDATA[全国联保]]></services><!--选填，服务保障与特色:多个服务保障与特色用;分隔，可用于拼接创意，100字符以内--> -->
+<!--                 <tags><![CDATA[商务电脑;高速硬盘]]></tags><!--选填，标签:参考热门SEM词表填写产品的分类、产地、属性、风格等描述词,多个标签用;分隔，可拼接关键词、触发多属性定向，250字符以内--> -->
+<!--                 <availability>1</availability><!--选填，是否有效标记:1为有效,0即无效，控制自动上下线（0即下线），1个字符--> -->
+<!--                 <stock>725</stock><!--选填，库存量，可用于拼接创意，50字符以内--> -->
+<!--                 <bought>214</bought><!--选填，已购人数，可用于拼接创意，10字符以内。--> -->
+<!--                 <targetRegion><![CDATA[上海;杭州;苏州;南京]]></targetRegion><!--选填，推广地域:可以是省份,也可精细到地级市、县级市及直辖市的区,多个地区可以用;分隔，控制投放地域，1024字符以内--> -->
+<!-- <!--以下为自定义字段--> -->
+<!--                 <choice> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[好评率]]></key> -->
+<!--                         <value>97%</value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[分辨率]]></key> -->
+<!--                         <value><![CDATA[1366*768]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[操作系统]]></key> -->
+<!--                         <value><![CDATA[Windows8]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[操控方式]]></key> -->
+<!--                         <value><![CDATA[触控]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[尺寸]]></key> -->
+<!--                         <value><![CDATA[12.5英寸]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[颜色]]></key> -->
+<!--                         <value><![CDATA[黑色系]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[网络制式]]></key> -->
+<!--                         <value><![CDATA[802.11b/g/n]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[高级功能]]></key> -->
+<!--                         <value><![CDATA[触摸屏]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[CPU]]></key> -->
+<!--                         <value><![CDATA[酷睿i3]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[上市时间]]></key> -->
+<!--                         <value><![CDATA[2012年]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[重量]]></key> -->
+<!--                         <value><![CDATA[1.5-2公斤]]></value> -->
+<!--                     </attribute> -->
+<!--                 </choice> -->
+<!--         </data> -->
+<!--     </url><!--第一个产品描述结束--> -->
+<!--     <url><!--第二个产品--> -->
+<!-- <!--以下为必填字段--> -->
+<!--         <loc><![CDATA[http://item.xxxx.com/item-454378.html?YTAG=3.21012020</loc>]]></loc><!--一个url地址对应一个产品--> -->
+<!--         <data> -->
+<!--                 <name><![CDATA[Apple苹果iMac一体机]]></name><!--必填，产品名称，可用于拼接关键词、拼接创意、触发多属性定向，70字符以内--> -->
+<!--                 <outerID><![CDATA[1133342]]></outerID><!--必填，商家内部唯一ID，产品唯一性标记:若不对接,系统会自动用loc填充,此时要求每个产品的loc必须唯一，1024字符以内--> -->
+<!-- <!--以下为选填字段--> -->
+<!--                 <sellerName><![CDATA[亚马逊]]></sellerName><!--选填，商家站点的名称，可用于拼接创意、拼接关键词，12字符以内--> -->
+<!--                 <sellerSiteUrl><![CDATA[http://www.xxxx.com/]]></sellerSiteUrl><!--选填，商家站点url,可用于设置创意显示url,1024字符以内--> -->
+<!--                 <logo><![CDATA[http://www.baidu.com/img/bdlogo.gif]]></logo><!--选填，商家logo网址,可用于拼接展示类创意和商品橱窗创意,1024字符以内--> -->
+<!--                 <title><![CDATA[全网底价 超凡一体机，精雕细琢的锋芒之作]]></title><!--选填，产品描述,可用于拼接创意、触发多属性定向,500字符以内--> -->
+<!--                 <image><![CDATA[http://item.xxxx.com/item-454378.html?YTAG=3.21012020]]></image><!--选填，产品相关图片的网址,图文样式必填字段,1024字符以内--> -->
+<!--                 <price>14288.00</price><!--选填，产品现价，可用于拼接创意，10字符以内--> -->
+<!--                 <value>15288.00</value><!--选填，产品原价，可用于拼接创意，10字符以内--> -->
+<!--                 <saving>1000.00</saving><!--选填，节省的钱:新扩充的字段,系统自动根据price-value计算,可不提交，可用于拼接创意，10字符以内--> -->
+<!--                 <promotion><![CDATA[发表评论赠送积分（10积分=1元）精华评论更有额外奖励积分]]></promotion><!--选填，促销活动:多个促销活动用;分隔，可用于拼接创意，1024字符以内--> -->
+<!--                 <remainingDays>90</remainingDays><!--选填，推广剩余天数 :新增字段，可用于拼接创意，50字符以内--> -->
+<!--                 <brand><![CDATA[Apple 苹果]]></brand><!--选填，产品品牌，可用于拼接关键词、拼接创意、设置筛选条件、触发多属性定向，75字符以内--> -->
+<!--                 <brandUrl><![CDATA[http://www.xxxx.com/]]></brandUrl><!--选填，品牌页url:新增字段，方便投放品牌类别页，1024字符以内--> -->
+<!--                 <targetUrl><![CDATA[http://item.xxxx.com/item-454378.html?YTAG=3.21012020]]></targetUrl><!--选填，创意跳转的目标网址:如果希望跳转到单品页,可以与loc填充同样的内容，可用于设置访问url，1024字符以内--> -->
+<!--                 <category><![CDATA[3C数码]]></category><!--选填，一级分类，可用于设置筛选条件、拼接关键词、触发多属性定向，25字符以内--> -->
+<!--                 <subCategory><![CDATA[电脑]]></subCategory><!--选填，二级分类，可用于设置筛选条件、拼接关键词、触发多属性定向，25字符以内--> -->
+<!--                 <thirdCategory><![CDATA[台式电脑]]></thirdCategory><!--选填，三级分类，可用于设置筛选条件、拼接关键词、触发多属性定向，25字符以内--> -->
+<!--                 <fourthCategory><![CDATA[一体机电脑]]></fourthCategory><!--选填，四级分类，可用于设置筛选条件、拼接关键词、触发多属性定向，25字符以内--> -->
+<!--                 <categoryUrl><![CDATA[http://searchex.xxxx.com/item-454378.html?YTAG=3.21012020]]></categoryUrl><!--选填，一级分类url:新增字段，方便投放类别页，1024字符以内--> -->
+<!--                 <subCategoryUrl><![CDATA[http://searchex.xxxx.com/item-454378.html?YTAG=3.21012021]]></subCategoryUrl><!--选填，二级分类url:新增字段，方便投放类别页，1024字符以内--> -->
+<!--                 <thirdCategoryUrl><![CDATA[http://searchex.xxxx.com/item-454378.html?YTAG=3.21012022]]></thirdCategoryUrl><!--选填，三级分类url:新增字段，方便投放类别页，1024字符以内--> -->
+<!--                 <fourthCategoryUrl><![CDATA[http://searchex.xxxx.com/item-454378.html?YTAG=3.21012023]]></fourthCategoryUrl><!--选填，四级分类url:新增字段，方便投放类别页，1024字符以内--> -->
+<!--                 <startTime>2013-10-2 0:00:00</startTime><!--选填，推广开始时间:支持时间戳、yyyy/mm/dd hh:mm:ss、yyyy-mm-dd hh:mm:ss，控制自动上线，25字符以内--> -->
+<!--                 <endTime>2030-12-29 23:59:59</endTime><!--选填，推广结束时间:支持时间戳、yyyy/mm/dd hh:mm:ss、yyyy-mm-dd hh:mm:ss，，控制自动上线，25字符以内--> -->
+<!--                 <model><![CDATA[MD096CH/A]]></model><!--选填，型号:新增字段,电商品类核心字段,可用于拼接关键词、触发多属性定向，100字符以内--> -->
+<!--                 <services><![CDATA[全国联保]]></services><!--选填，服务保障与特色:多个服务保障与特色用;分隔，可用于拼接创意，100字符以内--> -->
+<!--                 <tags><![CDATA[全新imac;内置无线网卡]]></tags><!--选填，标签:参考热门SEM词表填写产品的分类、产地、属性、风格等描述词,多个标签用;分隔，可拼接关键词、触发多属性定向，250字符以内--> -->
+<!--                 <availability>1</availability><!--选填，是否有效标记:1为有效,0即无效，控制自动上下线（0即下线），1个字符--> -->
+<!--                 <stock>323</stock><!--选填，库存量，可用于拼接创意，50字符以内--> -->
+<!--                 <bought>76</bought><!--选填，已购人数，可用于拼接创意，10字符以内。--> -->
+<!--                 <targetRegion><![CDATA[安徽;河南;宁夏;四川;山东;黑龙江;广西]]></targetRegion><!--选填，推广地域:可以是省份,也可精细到地级市、县级市及直辖市的区,多个地区可以用;分隔，控制投放地域，1024字符以内--> -->
+<!-- <!--以下为自定义字段--> -->
+<!--                 <choice> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[显示屏尺寸]]></key> -->
+<!--                         <value><![CDATA[27英寸]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[分辨率]]></key> -->
+<!--                         <value><![CDATA[2560*1440]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[CPU型号]]></key> -->
+<!--                         <value><![CDATA[Core i5 处理器]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[硬盘容量]]></key> -->
+<!--                         <value><![CDATA[1 TB]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[内存容量]]></key> -->
+<!--                         <value><![CDATA[8 G]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[声卡类型]]></key> -->
+<!--                         <value><![CDATA[集成]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[网卡]]></key> -->
+<!--                         <value><![CDATA[10/100M/1000M]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[重量]]></key> -->
+<!--                         <value><![CDATA[9.54 千克]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[上市时间]]></key> -->
+<!--                         <value><![CDATA[2012年]]></value> -->
+<!--                     </attribute> -->
+<!--                     <attribute> -->
+<!--                         <key><![CDATA[操作系统]]></key> -->
+<!--                         <value><![CDATA[OS X Mountain Lion]]></value> -->
+<!--                     </attribute> -->
+<!--                 </choice> -->
+<!--         </data> -->
+<!--     </url><!--第二个产品描述结束--> -->
+<!-- </urlset> -->

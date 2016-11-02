@@ -1,0 +1,1 @@
+{"URL":"http://sample.com", "Name":"测试", "OuterID":"2222", "Title":"标题", "Image":"http://sample.com/0.jpg", "MoreImages":[{"Index":"1", "URL":"http://sample.com/1.jpg"}, {"Index":"2", "URL":"http://sample.com/2.jpg"}], "Attrs":[{"Key":"好评率", "Value":"97%"}, {"Key":"分辨率", "Value":"1366*768"}]}

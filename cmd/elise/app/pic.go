@@ -1,13 +1,10 @@
 package app
 
 import (
-	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"math"
 	"net/url"
 	"os"
@@ -15,56 +12,37 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync/atomic"
-	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	log "github.com/Sirupsen/logrus"
-	"github.com/ensonmj/elise/cmd/elise/assets"
 	"github.com/ensonmj/elise/htmlutil"
+	"github.com/ensonmj/elise/textline"
 	"github.com/spf13/cobra"
 	"github.com/yosssi/gohtml"
 	"golang.org/x/net/html"
-	"golang.org/x/sync/errgroup"
 )
 
 var (
-	fWorkerNum int
-
-	fInFile      string
-	fParsedJson  bool
-	fTmplFile    string
-	fPubDir      string
-	fPicSplitCnt int
-
 	fWidthMin  float64
 	fHeightMin float64
 	fRatioMin  float64 // width / height
 	fRatioMax  float64
 	fImgNumMin int
-
-	fOTrim   bool
-	fDevMode bool
+	fOTrim     bool
+	fPicDelim  string
+	fPicField  int
 )
 
 func init() {
 	flags := PicCmd.Flags()
-	flags.IntVarP(&fWorkerNum, "parallel", "p", 10, "number of parallel parse worker")
-
-	flags.StringVarP(&fInFile, "file", "f", "-", "crawler result file for parse or parse result file for demonstration, '-' stands for term")
-	flags.BoolVarP(&fParsedJson, "parsedJson", "j", false, "input file is parsed json")
-	flags.StringVarP(&fTmplFile, "tmplFile", "t", "/assets/templates/layout.tmpl", "template file which used to produce demonstration HTML")
-	flags.StringVarP(&fPubDir, "pubDir", "P", "./pub", "public dir for store demonstration HTML file")
-	flags.IntVarP(&fPicSplitCnt, "splitCount", "c", 100, "max line count for one output file")
-
 	flags.Float64VarP(&fWidthMin, "widthMin", "W", 64.0, "image min width")
 	flags.Float64VarP(&fHeightMin, "heightMin", "H", 64.0, "image min height")
 	flags.Float64VarP(&fRatioMin, "ratioMin", "r", 0.35, "image width/height min value")
 	flags.Float64VarP(&fRatioMax, "ratioMax", "R", 2.85, "image width/height max value")
 	flags.IntVarP(&fImgNumMin, "imgNumMin", "n", 4, "image num min value which won't be filtered")
-
 	flags.BoolVarP(&fOTrim, "outputTrim", "o", false, "print HTML after trimming")
-	flags.BoolVarP(&fDevMode, "devMode", "D", false, "develop mode, using local assets")
+	flags.StringVarP(&fPicDelim, "delimiter", "d", "\t", "field delimiter")
+	flags.IntVarP(&fPicField, "field", "f", 2, "nth field for process, index start from 1")
 }
 
 type TextInfo struct {
@@ -104,10 +82,136 @@ func (sgs ScoredGrpSlice) Less(i, j int) bool {
 }
 
 type PicDesc struct {
-	OrigLP  string `json:"origlp"`
-	LP      string `json:"lp"`
-	Title   string `json:"title"`
+	OrigLP  string
+	LP      string
+	Title   string
 	SGSlice ScoredGrpSlice
+}
+
+type PicWorker struct{}
+
+func (w *PicWorker) Process(line []byte) (interface{}, error) {
+	fields := bytes.Split(line, []byte(fPicDelim))
+	if len(fields) < fPicField {
+		return nil, errors.New("line format is wrong")
+	}
+
+	var resp CrawlerResp
+	if err := json.Unmarshal(fields[fPicField-1], &resp); err != nil {
+		return nil, err
+	}
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.HTML))
+	if err != nil {
+		return nil, err
+	}
+	origLP := string(fields[0])
+	lp := resp.LandingPage
+	picDesc, err := parseDoc(doc, origLP, lp)
+	if err != nil {
+		return nil, err
+	}
+
+	return picDesc, nil
+}
+
+type HtmlFileWorker struct {
+	outputDir string
+	splitCnt  int
+	isTerm    bool
+	noSuffix  string
+	ext       string
+	index     int
+	file      *os.File
+}
+
+func (w *HtmlFileWorker) PrepareOnce() error {
+	return nil
+}
+
+func (w *HtmlFileWorker) BeforeWrite(fn string) error {
+	if fn == "-" {
+		w.isTerm = true
+		w.file = os.Stdout
+		return nil
+	}
+
+	base := filepath.Base(fn)
+	w.noSuffix = strings.TrimSuffix(base, filepath.Ext(base))
+	return nil
+}
+
+func (w *HtmlFileWorker) PreWrite(num int) error {
+	if w.isTerm {
+		return nil
+	}
+
+	if num%w.splitCnt == 0 {
+		index := num / w.splitCnt
+		var path string
+		if index > 0 {
+			path = filepath.Join(w.outputDir, w.noSuffix+"_"+strconv.Itoa(index)+w.ext)
+		} else {
+			path = filepath.Join(w.outputDir, w.noSuffix+w.ext)
+		}
+		f, err := os.Create(path)
+		if err != nil {
+			return err
+		}
+
+		w.file = f
+		w.index = index
+	}
+
+	return nil
+}
+
+func (w *HtmlFileWorker) Write(data interface{}) error {
+	picDesc, ok := data.(*PicDesc)
+	if !ok {
+		return errors.New("data format error")
+	}
+
+	w.file.WriteString(picDesc.OrigLP)
+	w.file.Write([]byte{'\t'})
+	bytes, err := json.Marshal(picDesc)
+	if err != nil {
+		return err
+	}
+	w.file.Write(bytes)
+	w.file.Write([]byte{'\n'})
+	return nil
+}
+
+func (w *HtmlFileWorker) PostWrite(num int) error {
+	if w.isTerm {
+		return nil
+	}
+	if num%w.splitCnt == w.splitCnt-1 && w.file != nil {
+		w.file.Close()
+		w.file = nil
+	}
+
+	return nil
+}
+
+func (w *HtmlFileWorker) AfterWrite() error {
+	if w.isTerm {
+		return nil
+	}
+
+	w.file.Close()
+	w.file = nil
+	// remove extra file if exists
+	index := w.index
+	for {
+		index++
+		path := filepath.Join(w.outputDir, w.noSuffix+"_"+strconv.Itoa(index)+w.ext)
+		if err := os.Remove(path); os.IsNotExist(err) {
+			break
+		}
+	}
+
+	return nil
 }
 
 var PicCmd = &cobra.Command{
@@ -115,221 +219,16 @@ var PicCmd = &cobra.Command{
 	Short: "Use pictures to describe the webpage.",
 	Long: `Check all pictures in the webpage, find the pictures which can best
 represent the webpage according to web structure and something else.`,
-	PreRunE: func(cmd *cobra.Command, args []string) error {
-		if _, err := os.Stat(fPubDir); os.IsNotExist(err) {
-			if err = os.Mkdir(fPubDir, os.ModePerm); err != nil {
-				return err
-			}
-		}
-		return nil
-	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return parsePage()
+		return pic()
 	},
 }
 
-func parsePage() error {
-	ctx, cancel := context.WithCancel(context.Background())
-	picDescChan := make(chan *PicDesc, fWorkerNum)
-	var writeEG errgroup.Group
-	writeEG.Go(func() error {
-		if fInFile == "-" {
-			for picDesc := range picDescChan {
-				b, err := json.Marshal(picDesc)
-				if err != nil {
-					log.WithError(err).Warn("Failed to marshal picDesc")
-					continue
-				}
-				fmt.Printf("%s\t%s\n", picDesc.LP, string(b))
-			}
-			return nil
-		}
-
-		tmpl, err := initTmpl(fDevMode)
-		if err != nil {
-			log.WithError(err).Warn("Failed to init template")
-			cancel()
-		}
-
-		base := filepath.Base(fInFile)
-		noSuffix := strings.TrimSuffix(base, filepath.Ext(base))
-		resPath := filepath.Join(fPubDir, noSuffix+".html")
-		f, err := openHTML(resPath, tmpl)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"resPath": resPath,
-				"err":     err,
-			}).Warn("Failed to create output HTML file")
-			cancel()
-		}
-
-		line := 0
-		index := 0
-		for picDesc := range picDescChan {
-			err = produceHTML(f, tmpl, picDesc)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"resPath": resPath,
-					"err":     err,
-				}).Warn("Failed to produce HTML node")
-				cancel()
-			}
-
-			line++
-			if line >= fPicSplitCnt {
-				closeHTML(f, tmpl)
-
-				line = 0
-				index++
-				resPath = filepath.Join(fPubDir, noSuffix+"_"+strconv.Itoa(index)+".html")
-				f, err = openHTML(resPath, tmpl)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"resPath": resPath,
-						"err":     err,
-					}).Warn("Failed to create output HTML file")
-					cancel()
-				}
-			}
-		}
-		closeHTML(f, tmpl)
-
-		// remove extra file if exists
-		for {
-			index++
-			resPath = filepath.Join(fPubDir, noSuffix+"_"+strconv.Itoa(index)+".html")
-			if err := os.Remove(resPath); os.IsNotExist(err) {
-				break
-			}
-		}
-
-		return nil
-	})
-
-	textInfo := TextInfo{LineCnt: new(uint64)}
-	textInfoChan := make(chan TextInfo, fWorkerNum)
-	var workerEG errgroup.Group
-	for i := 0; i < fWorkerNum; i++ {
-		index := i
-		workerEG.Go(func() error {
-			for {
-				select {
-				case textInfo, ok := <-textInfoChan:
-					if !ok {
-						log.WithField("index", index).Debug("Worker exit")
-						return nil
-					}
-					fields := strings.Split(textInfo.Text, "\t")
-					if len(fields) != 2 {
-						log.WithFields(log.Fields{
-							"index": index,
-							"text":  textInfo.Text,
-						}).Warn("Text format is wrong")
-						continue
-					}
-					var picDesc *PicDesc
-					var err error
-					if fParsedJson {
-						picDesc = new(PicDesc)
-						if err = json.Unmarshal([]byte(fields[1]), &picDesc); err != nil {
-							log.WithFields(log.Fields{
-								"index": index,
-								"err":   err,
-							}).Warn("Failed to unmarshal")
-							continue
-						}
-					} else {
-						var resp CrawlerResp
-						if err = json.Unmarshal([]byte(fields[1]), &resp); err != nil {
-							log.WithFields(log.Fields{
-								"index": index,
-								"text":  textInfo.Text,
-								"err":   err,
-							}).Warn("Failed to unmarshal")
-							continue
-						}
-						doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.HTML))
-						if err != nil {
-							log.WithFields(log.Fields{
-								"index": index,
-								"err":   err,
-							}).Warn("Failed to create document")
-							continue
-						}
-
-						origLP := fields[0]
-						lp := resp.LandingPage
-						picDesc, err = parseDoc(doc, origLP, lp)
-						if err != nil {
-							log.WithFields(log.Fields{
-								"index": index,
-								"err":   err,
-							}).Debug("Failed to parse document")
-							continue
-						}
-					}
-
-					atomic.AddUint64(textInfo.LineCnt, 1)
-					picDescChan <- picDesc
-				}
-			}
-		})
-	}
-
-	var f *os.File
-	var err error
-	if fInFile == "-" {
-		f = os.Stdin
-	} else {
-		f, err = os.Open(fInFile)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"inFile": fInFile,
-				"err":    err,
-			}).Fatal("Failed to open file for read")
-			return err
-		}
-	}
-
-	jobStarted := time.Now()
-	sc := bufio.NewScanner(f)
-	sc.Buffer([]byte{}, 2*1024*1024) // default 64k, change to 2M
-	lineCount := 0
-SCANLOOP:
-	for sc.Scan() {
-		select {
-		case <-ctx.Done():
-			log.WithError(ctx.Err()).Warn("Partial finished to extract img")
-			break SCANLOOP
-		default:
-			textInfo.Text = sc.Text()
-			textInfoChan <- textInfo
-			lineCount++
-		}
-	}
-	f.Close()
-	close(textInfoChan)
-	workerEG.Wait()
-
-	close(picDescChan)
-	writeEG.Wait()
-
-	if err = sc.Err(); err != nil {
-		log.WithFields(log.Fields{
-			"file":         fInFile,
-			"readLineCnt":  lineCount,
-			"writeLineCnt": atomic.LoadUint64(textInfo.LineCnt),
-			"elapsed":      time.Since(jobStarted),
-			"err":          err,
-		}).Warn("Failed to read line from file")
-		return err
-	}
-	log.WithFields(log.Fields{
-		"file":         fInFile,
-		"readLineCnt":  lineCount,
-		"writeLineCnt": atomic.LoadUint64(textInfo.LineCnt),
-		"elapsed":      time.Since(jobStarted),
-	}).Debug("Finished all the job")
+func pic() error {
+	tlm := textline.New(fEliseInPath, fEliseParallel, &PicWorker{},
+		&HtmlFileWorker{outputDir: fEliseOutputDir, splitCnt: fEliseSplitCnt, ext: ".json"})
+	tlm.FeedLine()
+	tlm.Wait()
 
 	return nil
 }
@@ -651,33 +550,4 @@ func imgOnAverage(img ImgItem, avgWidth, avgHeight, avgRatio float64) bool {
 	}
 
 	return true
-}
-
-func initTmpl(devMode bool) (*template.Template, error) {
-	// create output HTML file
-	tmplStr, err := assets.FSString(devMode, fTmplFile)
-	if err != nil {
-		return nil, err
-	}
-	return template.New("tmpl").Parse(tmplStr)
-}
-
-func openHTML(filename string, tmpl *template.Template) (f *os.File, err error) {
-	f, err = os.Create(filename)
-	if err != nil {
-		return
-	}
-
-	err = tmpl.ExecuteTemplate(f, "header", nil)
-	return
-}
-
-func produceHTML(f *os.File, tmpl *template.Template, picDesc *PicDesc) error {
-	return tmpl.ExecuteTemplate(f, "item", picDesc)
-}
-
-func closeHTML(f *os.File, tmpl *template.Template) error {
-	err := tmpl.ExecuteTemplate(f, "footer", nil)
-	f.Close()
-	return err
 }

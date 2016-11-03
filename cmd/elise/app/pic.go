@@ -140,13 +140,13 @@ func (w *HtmlFileWorker) BeforeWrite(fn string) error {
 	return nil
 }
 
-func (w *HtmlFileWorker) PreWrite(num int) error {
+func (w *HtmlFileWorker) PreWrite(row int) error {
 	if w.isTerm {
 		return nil
 	}
 
-	if num%w.splitCnt == 0 {
-		index := num / w.splitCnt
+	if row%w.splitCnt == 0 {
+		index := row / w.splitCnt
 		var path string
 		if index > 0 {
 			path = filepath.Join(w.outputDir, w.noSuffix+"_"+strconv.Itoa(index)+w.ext)
@@ -182,11 +182,11 @@ func (w *HtmlFileWorker) Write(data interface{}) error {
 	return nil
 }
 
-func (w *HtmlFileWorker) PostWrite(num int) error {
+func (w *HtmlFileWorker) PostWrite(row int) error {
 	if w.isTerm {
 		return nil
 	}
-	if num%w.splitCnt == w.splitCnt-1 && w.file != nil {
+	if row%w.splitCnt == w.splitCnt-1 && w.file != nil {
 		w.file.Close()
 		w.file = nil
 	}

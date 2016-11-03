@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -32,26 +33,72 @@ type LineProcessor interface {
 
 type FileInfo struct {
 	FileStorage
-	FilePath   string
-	LineCnt    uint64
-	writerChan chan LineInfo
-	started    time.Time
+	FilePath     string
+	procLineCnt  int32
+	writeLineCnt int
+	writerChan   chan LineInfo
+	started      time.Time
+}
+
+func (fi *FileInfo) writeLine(data interface{}) error {
+	if data == nil {
+		// don't write Process err line
+		return nil
+	}
+
+	if err := fi.PreWrite(fi.writeLineCnt); err != nil {
+		log.WithError(err).Warn("Failed to prewrite")
+		return err
+	}
+	if err := fi.Write(data); err != nil {
+		log.WithError(err).Warn("Failed to write file")
+		return err
+	}
+	fi.writeLineCnt++
+	if err := fi.PostWrite(fi.writeLineCnt); err != nil {
+		log.WithError(err).Warn("Failed to postwrite")
+		return err
+	}
+
+	return nil
+}
+
+func (fi *FileInfo) drainChan() {
+	go func() {
+		for range fi.writerChan {
+		}
+	}()
 }
 
 type FileStorage interface {
 	PrepareOnce() error
 	BeforeWrite(fn string) error
-	PreWrite(num int) error
+	PreWrite(row int) error
 	Write(data interface{}) error
-	PostWrite(num int) error
+	PostWrite(row int) error
 	AfterWrite() error
 }
 
 type LineInfo struct {
 	*FileInfo
-	Index uint64
+	Index int
 	Bytes []byte
 	Data  interface{}
+}
+
+type LineInfoSlice []LineInfo
+
+func (lis LineInfoSlice) Len() int {
+	return len(lis)
+}
+
+func (lis LineInfoSlice) Swap(i, j int) {
+	lis[i], lis[j] = lis[j], lis[i]
+}
+
+// ascending order
+func (lis LineInfoSlice) Less(i, j int) bool {
+	return lis[i].Index < lis[j].Index
 }
 
 func New(path string, num int, lineProc LineProcessor, fileSave FileStorage) *TLManager {
@@ -79,6 +126,7 @@ func (m *TLManager) registerLineProc() {
 						return nil
 					}
 
+					// ignore error here, just for keep input sequence
 					data, err := m.Process(lineInfo.Bytes)
 					if err != nil {
 						log.WithFields(log.Fields{
@@ -87,10 +135,9 @@ func (m *TLManager) registerLineProc() {
 							"row":      lineInfo.Index,
 							"err":      err,
 						}).Warn("Failed to process one line")
-						continue
 					}
-
-					atomic.AddUint64(&lineInfo.LineCnt, 1)
+					atomic.AddInt32(&lineInfo.procLineCnt, 1)
+					// data is nil is error happend
 					lineInfo.Data = data
 					lineInfo.writerChan <- lineInfo
 				}
@@ -167,7 +214,7 @@ func (m *TLManager) readFile(path string) error {
 	m.registerPostProc(fi)
 	m.fileInfoList = append(m.fileInfoList, fi)
 
-	var lineCount uint64
+	var lineCount int
 	sc := bufio.NewScanner(f)
 	sc.Buffer([]byte{}, 2*1024*1024) // default 64k, change to 2M
 SCANLOOP:
@@ -211,60 +258,83 @@ SCANLOOP:
 
 func (m *TLManager) registerPostProc(fi *FileInfo) {
 	m.fileEG.Go(func() error {
-		// don't return immediately if error occur
-		// we must drain 'writerChan' before exit
-		var err error
-		if err = fi.BeforeWrite(fi.FilePath); err != nil {
+		if err := fi.BeforeWrite(fi.FilePath); err != nil {
+			m.cancel()
+			fi.drainChan()
 			log.WithError(err).Warn("Failed to beforewrite")
-			m.cancel()
+			return err
 		}
 
-		lineCount := 0
+		var cache LineInfoSlice
+		var currIndex int
 		for line := range fi.writerChan {
-			if err != nil {
-				// drain 'writerChan'
+			// keep output follow input sequence
+			if line.Index != currIndex {
+				cache = append(cache, line)
+				sort.Sort(cache)
 				continue
+			}
+			currIndex++
+
+			if err := fi.writeLine(line.Data); err != nil {
+				m.cancel()
+				fi.drainChan()
+				log.WithError(err).Warn("Failed to writeLine")
+				return err
 			}
 
-			if err = fi.PreWrite(lineCount); err != nil {
-				log.WithError(err).Warn("Failed to prewrite")
-				m.cancel()
-				continue
+			// read from cache
+			cacheIndex := 0
+			for _, line := range cache {
+				if line.Index != currIndex {
+					break
+				}
+				cacheIndex++
+				currIndex++
+
+				if err := fi.writeLine(line.Data); err != nil {
+					m.cancel()
+					fi.drainChan()
+					log.WithError(err).Warn("Failed to writeLine")
+					return err
+				}
 			}
-			if err = fi.Write(line.Data); err != nil {
-				log.WithError(err).Warn("Failed to write file")
-				m.cancel()
-				continue
+			if cacheIndex > 0 {
+				cache = cache[:copy(cache, cache[cacheIndex:])]
 			}
-			if err = fi.PostWrite(lineCount); err != nil {
-				log.WithError(err).Warn("Failed to postwrite")
-				m.cancel()
-				continue
-			}
-			lineCount++
 		}
 
-		if err = fi.AfterWrite(); err != nil {
-			log.WithError(err).Warn("Failed to afterwrite")
+		if err := fi.AfterWrite(); err != nil {
 			m.cancel()
+			log.WithError(err).Warn("Failed to afterwrite")
+			return err
 		}
 
 		log.WithFields(log.Fields{
 			"file":         fi.FilePath,
-			"writeLineCnt": atomic.LoadUint64(&fi.LineCnt),
+			"procLineCnt":  atomic.LoadInt32(&fi.procLineCnt),
+			"writeLineCnt": fi.writeLineCnt,
 			"elapsed":      time.Since(fi.started),
 		}).Info("Finished to save result for one file")
-		return err
+		return nil
 	})
 }
 
 func (m *TLManager) Wait() {
 	m.procEG.Wait()
+	log.WithFields(log.Fields{
+		"inPath":  m.inPath,
+		"elapsed": time.Since(m.started),
+	}).Debug("Finished to process all text line")
 
 	for _, fi := range m.fileInfoList {
 		close(fi.writerChan)
 	}
 	m.fileEG.Wait()
+	log.WithFields(log.Fields{
+		"inPath":  m.inPath,
+		"elapsed": time.Since(m.started),
+	}).Debug("Finished to write all result")
 
 	log.WithFields(log.Fields{
 		"inPath":  m.inPath,

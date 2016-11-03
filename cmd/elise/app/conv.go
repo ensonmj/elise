@@ -95,7 +95,7 @@ func (w *FileWorker) BeforeWrite(fn string) error {
 	return nil
 }
 
-func (w *FileWorker) PreWrite(num int) error {
+func (w *FileWorker) PreWrite(row int) error {
 	if w.isTerm {
 		if !w.termPreWrite {
 			w.termPreWrite = true
@@ -108,8 +108,8 @@ func (w *FileWorker) PreWrite(num int) error {
 		return nil
 	}
 
-	if num%w.splitCnt == 0 {
-		index := num / w.splitCnt
+	if row%w.splitCnt == 0 {
+		index := row / w.splitCnt
 		var path string
 		if index > 0 {
 			path = filepath.Join(w.outputDir, w.noSuffix+"_"+strconv.Itoa(index)+w.ext)
@@ -139,7 +139,7 @@ func (w *FileWorker) Write(data interface{}) error {
 	return w.textTmpl.ExecuteTemplate(w.file, "item", data)
 }
 
-func (w *FileWorker) PostWrite(num int) error {
+func (w *FileWorker) PostWrite(row int) error {
 	if w.isTerm {
 		if !w.termPostWrite {
 			w.termPostWrite = true
@@ -151,7 +151,7 @@ func (w *FileWorker) PostWrite(num int) error {
 		return nil
 	}
 
-	if num%w.splitCnt == w.splitCnt-1 && w.file != nil {
+	if row%w.splitCnt == w.splitCnt-1 && w.file != nil {
 		var err error
 		if w.tmplSafe {
 			err = w.htmlTmpl.ExecuteTemplate(w.file, "footer", nil)

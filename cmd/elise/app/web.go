@@ -11,16 +11,16 @@ import (
 )
 
 var (
-	fWebPort    string
+	fWebAddr    string
 	fWebDevMode bool
 	fWebPubDir  string
 )
 
 func init() {
 	flags := WebCmd.Flags()
-	flags.StringVarP(&fWebPort, "port", "p", "8080", "the server port")
+	flags.StringVarP(&fWebAddr, "addr", "a", ":8080", "the server listen addr")
 	flags.BoolVarP(&fWebDevMode, "devMode", "D", false, "develop mode, using local assets")
-	flags.StringVarP(&fWebPubDir, "pubDir", "P", "./pub", "public dir for store demonstration file")
+	flags.StringVarP(&fWebPubDir, "pubDir", "d", "./pub", "public dir for store demonstration file")
 }
 
 var WebCmd = &cobra.Command{
@@ -36,8 +36,7 @@ func web() error {
 	http.Handle("/assets/", http.FileServer(assets.FS(fWebDevMode)))
 	http.Handle("/proxy", newImgProxy())
 
-	addr := ":" + fWebPort
-	return http.ListenAndServe(addr, nil)
+	return http.ListenAndServe(fWebAddr, nil)
 }
 
 func newImgProxy() *httputil.ReverseProxy {

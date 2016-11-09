@@ -212,7 +212,13 @@ func initTextTmpl(devMode bool, filePath string) (*text.Template, error) {
 	if err != nil {
 		return nil, err
 	}
-	return text.New("tmpl").Parse(tmplStr)
+	return text.New("tmpl").Funcs(text.FuncMap{
+		"minus": minus,
+	}).Parse(tmplStr)
+}
+
+func minus(a, b int) int {
+	return a - b
 }
 
 func initHtmlTmpl(devMode bool, filePath string) (*html.Template, error) {

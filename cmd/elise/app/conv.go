@@ -133,7 +133,7 @@ func (w *FileWorker) PreWrite(row int) error {
 
 func (w *FileWorker) Write(data interface{}) error {
 	if w.tmplSafe {
-		return w.htmlTmpl.ExecuteTemplate(w.file, "item", nil)
+		return w.htmlTmpl.ExecuteTemplate(w.file, "item", data)
 	}
 
 	return w.textTmpl.ExecuteTemplate(w.file, "item", data)

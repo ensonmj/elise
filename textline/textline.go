@@ -54,11 +54,11 @@ func (fi *FileInfo) writeLine(data interface{}) error {
 		log.WithError(err).Warn("Failed to write file")
 		return err
 	}
-	fi.writeLineCnt++
 	if err := fi.PostWrite(fi.writeLineCnt); err != nil {
 		log.WithError(err).Warn("Failed to postwrite")
 		return err
 	}
+	fi.writeLineCnt++
 
 	return nil
 }
@@ -277,9 +277,12 @@ func (m *TLManager) registerPostProc(fi *FileInfo) {
 			currIndex++
 
 			if err := fi.writeLine(line.Data); err != nil {
+				log.WithFields(log.Fields{
+					"lineIndex": line.Index,
+					"err":       err,
+				}).Warn("Failed to writeLine")
 				m.cancel()
 				fi.drainChan()
-				log.WithError(err).Warn("Failed to writeLine")
 				return err
 			}
 
@@ -293,9 +296,12 @@ func (m *TLManager) registerPostProc(fi *FileInfo) {
 				currIndex++
 
 				if err := fi.writeLine(line.Data); err != nil {
+					log.WithFields(log.Fields{
+						"lineIndex": line.Index,
+						"err":       err,
+					}).Warn("Failed to writeLine")
 					m.cancel()
 					fi.drainChan()
-					log.WithError(err).Warn("Failed to writeLine")
 					return err
 				}
 			}
@@ -305,8 +311,8 @@ func (m *TLManager) registerPostProc(fi *FileInfo) {
 		}
 
 		if err := fi.AfterWrite(); err != nil {
-			m.cancel()
 			log.WithError(err).Warn("Failed to afterwrite")
+			m.cancel()
 			return err
 		}
 

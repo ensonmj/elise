@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/PuerkitoBio/goquery"
 	log "github.com/Sirupsen/logrus"
@@ -234,7 +235,7 @@ func pic() error {
 }
 
 func parseDoc(doc *goquery.Document, origLP, lp string) (*PicDesc, error) {
-	title := doc.Find("title").Text()
+	title := normalizeTitle(doc.Find("title").Text())
 
 	trimHTML(doc)
 	if err := normalizeHTML(doc, lp); err != nil {
@@ -265,6 +266,15 @@ func parseDoc(doc *goquery.Document, origLP, lp string) (*PicDesc, error) {
 	log.WithField("picDesc", picDesc).Debug("Finished to parse one document")
 
 	return picDesc, nil
+}
+
+func normalizeTitle(title string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, title)
 }
 
 // trim some node according selector

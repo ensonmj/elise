@@ -30,7 +30,7 @@ func init() {
 
 	pflags := EliseCmd.PersistentFlags()
 	pflags.IntVarP(&fEliseParallel, "parallel", "P", 10, "max number of parallel exector")
-	pflags.IntVarP(&fEliseVerbose, "verbose", "v", 4, "log level: 0~5, 5 for debug detail")
+	pflags.IntVarP(&fEliseVerbose, "verbose", "v", 0, "log level: 0~5, 5 for debug detail")
 	pflags.StringVarP(&fEliseLogDir, "logDir", "L", "./log", "dir for storage log")
 	pflags.BoolVar(&fEliseFlushLog, "flushLog", false, "flush log dir for debug")
 	pflags.StringVarP(&fEliseInPath, "inPath", "p", "-", "file or dir for input, '-' stands for term")

@@ -2,7 +2,7 @@
 lp	origlp	title	pic
 {{- end}}
 {{define "item"}}
-{{.LP}}	{{.OrigLP}}	{{.Title}}	{{with index .SGSlice 0 "ImgItems"}}{{$length := len .}}{{$last := minus $length 1}}{{range  $i, $v := .}}{{if lt $i $last}}{{.Src}}#_#{{else}}{{.Src}}{{end}}{{end}}{{end}}
+{{.LP}}	{{.OrigLP}}	{{.Title}}	{{with index .SGSlice 0 "ImgItems"}}{{$last := len . | add -1}}{{range  $i, $v := .}}<img src="{{.Src}}" width="200px"></img>{{if lt $i $last}}#_#{{end}}{{end}}{{end}}
 {{- end}}
 {{define "footer"}}
 {{- end}}

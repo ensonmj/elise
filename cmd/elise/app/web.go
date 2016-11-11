@@ -13,14 +13,14 @@ import (
 var (
 	fWebAddr    string
 	fWebDevMode bool
-	fWebPubDir  string
+	fWebRootDir string
 )
 
 func init() {
 	flags := WebCmd.Flags()
 	flags.StringVarP(&fWebAddr, "addr", "a", ":8080", "the server listen addr")
 	flags.BoolVarP(&fWebDevMode, "devMode", "D", false, "develop mode, using local assets")
-	flags.StringVarP(&fWebPubDir, "pubDir", "d", "./pub", "public dir for store demonstration file")
+	flags.StringVarP(&fWebRootDir, "rootDir", "d", "./pub", "public dir for store demonstration file")
 }
 
 var WebCmd = &cobra.Command{
@@ -32,7 +32,7 @@ var WebCmd = &cobra.Command{
 }
 
 func web() error {
-	http.Handle("/", http.FileServer(http.Dir(fWebPubDir)))
+	http.Handle("/", http.FileServer(http.Dir(fWebRootDir)))
 	http.Handle("/assets/", http.FileServer(assets.FS(fWebDevMode)))
 	http.Handle("/proxy", newImgProxy())
 

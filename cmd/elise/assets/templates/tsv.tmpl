@@ -1,8 +1,8 @@
 {{define "header" -}}
 lp	origlp	title	pic
-{{- end}}
-{{define "item"}}
+{{end}}
+{{define "item" -}}
 {{.LP}}	{{.OrigLP}}	{{.Title}}	{{with index .SGSlice 0 "ImgItems"}}{{$last := len . | add -1}}{{range  $i, $v := .}}<img src="{{.Src}}" width="200px"></img>{{if lt $i $last}}#_#{{end}}{{end}}{{end}}
-{{- end}}
-{{define "footer"}}
-{{- end}}
+{{end}}
+{{define "footer" -}}
+{{end}}

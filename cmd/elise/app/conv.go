@@ -3,16 +3,12 @@ package app
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	html "html/template"
 	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 	text "text/template"
 
 	"github.com/ensonmj/elise/cmd/elise/assets"
-	"github.com/ensonmj/elise/textline"
+	"github.com/ensonmj/fileproc"
 	"github.com/spf13/cobra"
 )
 
@@ -35,154 +31,92 @@ func init() {
 	flags.IntVarP(&fConvField, "field", "f", 2, "nth field for conversion, index start from 1")
 }
 
-type LineWorker struct{}
+type LineWorker struct {
+	tmplSafe bool
+	textTmpl *text.Template
+	htmlTmpl *html.Template
+}
 
-func (w *LineWorker) Process(line []byte) (interface{}, error) {
+func (w *LineWorker) Process(line []byte) []byte {
 	fields := bytes.Split(line, []byte(fConvDelim))
 	if len(fields) < fConvField {
-		return nil, errors.New("line format is wrong")
+		return nil
 	}
 
 	var data interface{}
 	if err := json.Unmarshal(fields[fConvField-1], &data); err != nil {
-		return nil, err
+		return nil
 	}
 
-	return data, nil
+	var buf bytes.Buffer
+	if w.tmplSafe {
+		w.htmlTmpl.ExecuteTemplate(&buf, "item", data)
+	} else {
+		w.textTmpl.ExecuteTemplate(&buf, "item", data)
+	}
+
+	return buf.Bytes()
 }
 
-type FileWorker struct {
-	outputDir     string
-	splitCnt      int
-	tmplSafe      bool
-	textTmpl      *text.Template
-	htmlTmpl      *html.Template
-	isTerm        bool
-	termPreWrite  bool
-	termPostWrite bool
-	noSuffix      string
-	ext           string
-	index         int
-	file          *os.File
-}
+func NewLineWorker(tmplSafe bool) *LineWorker {
+	w := &LineWorker{tmplSafe: tmplSafe}
 
-func (w *FileWorker) PrepareOnce() error {
 	if w.tmplSafe {
 		tmpl, err := initHtmlTmpl(fConvDevMode, fConvTmplFile)
 		if err != nil {
-			return err
+			return nil
 		}
 		w.htmlTmpl = tmpl
-		return nil
+		return w
 	}
 
 	tmpl, err := initTextTmpl(fConvDevMode, fConvTmplFile)
 	if err != nil {
-		return err
+		return nil
 	}
 	w.textTmpl = tmpl
-	return nil
+	return w
 }
 
-func (w *FileWorker) BeforeWrite(fn string) error {
-	if fn == "-" {
-		w.isTerm = true
-		return nil
-	}
-
-	base := filepath.Base(fn)
-	w.noSuffix = strings.TrimSuffix(base, filepath.Ext(base))
-	return nil
+type FileWorker struct {
+	tmplSafe bool
+	textTmpl *text.Template
+	htmlTmpl *html.Template
 }
 
-func (w *FileWorker) PreWrite(row int) error {
-	if w.isTerm {
-		if !w.termPreWrite {
-			w.termPreWrite = true
-			w.file = os.Stdout
-			if w.tmplSafe {
-				return w.htmlTmpl.ExecuteTemplate(w.file, "header", nil)
-			}
-			return w.textTmpl.ExecuteTemplate(w.file, "header", nil)
-		}
-		return nil
-	}
-
-	if row%w.splitCnt == 0 {
-		index := row / w.splitCnt
-		var path string
-		if index > 0 {
-			path = filepath.Join(w.outputDir, w.noSuffix+"_"+strconv.Itoa(index)+w.ext)
-		} else {
-			path = filepath.Join(w.outputDir, w.noSuffix+w.ext)
-		}
-		f, err := os.Create(path)
-		if err != nil {
-			return err
-		}
-
-		w.file = f
-		w.index = index
-		if w.tmplSafe {
-			return w.htmlTmpl.ExecuteTemplate(w.file, "header", nil)
-		}
-		return w.textTmpl.ExecuteTemplate(w.file, "header", nil)
-	}
-	return nil
-}
-
-func (w *FileWorker) Write(data interface{}) error {
+func (w *FileWorker) BeforeWrite(f *os.File) error {
 	if w.tmplSafe {
-		return w.htmlTmpl.ExecuteTemplate(w.file, "item", data)
+		return w.htmlTmpl.ExecuteTemplate(f, "header", nil)
 	}
-
-	return w.textTmpl.ExecuteTemplate(w.file, "item", data)
+	return w.textTmpl.ExecuteTemplate(f, "header", nil)
 }
 
-func (w *FileWorker) PostWrite(row int) error {
-	if w.isTerm {
-		if !w.termPostWrite {
-			w.termPostWrite = true
-			if w.tmplSafe {
-				return w.htmlTmpl.ExecuteTemplate(w.file, "footer", nil)
-			}
-			return w.textTmpl.ExecuteTemplate(w.file, "footer", nil)
-		}
-		return nil
+func (w *FileWorker) AfterWrite(f *os.File) error {
+	if w.tmplSafe {
+		return w.htmlTmpl.ExecuteTemplate(f, "footer", nil)
 	}
-
-	if row%w.splitCnt == w.splitCnt-1 && w.file != nil {
-		var err error
-		if w.tmplSafe {
-			err = w.htmlTmpl.ExecuteTemplate(w.file, "footer", nil)
-		} else {
-			err = w.textTmpl.ExecuteTemplate(w.file, "footer", nil)
-		}
-		w.file.Close()
-		w.file = nil
-		return err
-	}
-	return nil
+	return w.textTmpl.ExecuteTemplate(f, "footer", nil)
 }
 
-func (w *FileWorker) AfterWrite() error {
-	if w.isTerm {
+func NewFileWorker(tmplSafe bool) *FileWorker {
+	w := &FileWorker{tmplSafe: tmplSafe}
+
+	if w.tmplSafe {
+		tmpl, err := initHtmlTmpl(fConvDevMode, fConvTmplFile)
+		if err != nil {
+			return nil
+		}
+		w.htmlTmpl = tmpl
+		return w
+	}
+
+	tmpl, err := initTextTmpl(fConvDevMode, fConvTmplFile)
+	if err != nil {
 		return nil
 	}
+	w.textTmpl = tmpl
 
-	w.file.Close()
-	w.file = nil
-	// remove extra file if exists
-	index := w.index
-	for {
-		index++
-		path := filepath.Join(w.outputDir, w.noSuffix+"_"+strconv.Itoa(index)+w.ext)
-		if err := os.Remove(path); os.IsNotExist(err) {
-			break
-		}
-	}
-
-	return nil
+	return w
 }
 
 var ConvCmd = &cobra.Command{
@@ -194,15 +128,10 @@ var ConvCmd = &cobra.Command{
 }
 
 func conv() error {
-	tlm := textline.New(fEliseInPath, fEliseParallel, &LineWorker{},
-		&FileWorker{
-			outputDir: fEliseOutputDir,
-			splitCnt:  fEliseSplitCnt,
-			tmplSafe:  fConvTmplSafe,
-			ext:       fConvFileExt,
-		})
-	tlm.FeedLine()
-	tlm.Wait()
+	lp := NewLineWorker(fConvTmplSafe)
+	fw := NewFileWorker(fConvTmplSafe)
+	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, lp, fw)
+	fp.ProcPath(fEliseInPath, fEliseOutputDir, fConvFileExt)
 
 	return nil
 }

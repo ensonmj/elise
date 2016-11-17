@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"net/url"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -17,7 +16,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	log "github.com/Sirupsen/logrus"
 	"github.com/ensonmj/elise/htmlutil"
-	"github.com/ensonmj/elise/textline"
+	"github.com/ensonmj/fileproc"
 	"github.com/spf13/cobra"
 	"github.com/yosssi/gohtml"
 	"golang.org/x/net/html"
@@ -91,128 +90,38 @@ type PicDesc struct {
 
 type PicWorker struct{}
 
-func (w *PicWorker) Process(line []byte) (interface{}, error) {
+func (w *PicWorker) Process(line []byte) []byte {
 	fields := bytes.Split(line, []byte(fPicDelim))
 	if len(fields) < fPicField {
-		return nil, errors.New("line format is wrong")
+		return nil
 	}
 
 	var resp CrawlerResp
 	if err := json.Unmarshal(fields[fPicField-1], &resp); err != nil {
-		return nil, err
+		return nil
 	}
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.HTML))
 	if err != nil {
-		return nil, err
+		return nil
 	}
 	origLP := string(fields[0])
 	lp := resp.LandingPage
 	picDesc, err := parseDoc(doc, origLP, lp)
 	if err != nil {
-		return nil, err
-	}
-
-	return picDesc, nil
-}
-
-type HtmlFileWorker struct {
-	outputDir string
-	splitCnt  int
-	isTerm    bool
-	noSuffix  string
-	ext       string
-	index     int
-	file      *os.File
-}
-
-func (w *HtmlFileWorker) PrepareOnce() error {
-	return nil
-}
-
-func (w *HtmlFileWorker) BeforeWrite(fn string) error {
-	if fn == "-" {
-		w.isTerm = true
-		w.file = os.Stdout
 		return nil
 	}
 
-	base := filepath.Base(fn)
-	w.noSuffix = strings.TrimSuffix(base, filepath.Ext(base))
-	return nil
-}
-
-func (w *HtmlFileWorker) PreWrite(row int) error {
-	if w.isTerm {
-		return nil
-	}
-
-	if row%w.splitCnt == 0 {
-		index := row / w.splitCnt
-		var path string
-		if index > 0 {
-			path = filepath.Join(w.outputDir, w.noSuffix+"_"+strconv.Itoa(index)+w.ext)
-		} else {
-			path = filepath.Join(w.outputDir, w.noSuffix+w.ext)
-		}
-		f, err := os.Create(path)
-		if err != nil {
-			return err
-		}
-
-		w.file = f
-		w.index = index
-	}
-
-	return nil
-}
-
-func (w *HtmlFileWorker) Write(data interface{}) error {
-	picDesc, ok := data.(*PicDesc)
-	if !ok {
-		return errors.New("data format error")
-	}
-
-	w.file.WriteString(picDesc.OrigLP)
-	w.file.Write([]byte{'\t'})
-	bytes, err := json.Marshal(picDesc)
+	data, err := json.Marshal(picDesc)
 	if err != nil {
-		return err
-	}
-	w.file.Write(bytes)
-	w.file.Write([]byte{'\n'})
-	return nil
-}
-
-func (w *HtmlFileWorker) PostWrite(row int) error {
-	if w.isTerm {
 		return nil
 	}
-	if row%w.splitCnt == w.splitCnt-1 && w.file != nil {
-		w.file.Close()
-		w.file = nil
-	}
+	var buf bytes.Buffer
+	buf.WriteString(picDesc.OrigLP)
+	buf.Write([]byte{'\t'})
+	buf.Write(data)
+	buf.Write([]byte{'\n'})
 
-	return nil
-}
-
-func (w *HtmlFileWorker) AfterWrite() error {
-	if w.isTerm {
-		return nil
-	}
-
-	w.file.Close()
-	w.file = nil
-	// remove extra file if exists
-	index := w.index
-	for {
-		index++
-		path := filepath.Join(w.outputDir, w.noSuffix+"_"+strconv.Itoa(index)+w.ext)
-		if err := os.Remove(path); os.IsNotExist(err) {
-			break
-		}
-	}
-
-	return nil
+	return buf.Bytes()
 }
 
 var PicCmd = &cobra.Command{
@@ -226,10 +135,9 @@ represent the webpage according to web structure and something else.`,
 }
 
 func pic() error {
-	tlm := textline.New(fEliseInPath, fEliseParallel, &PicWorker{},
-		&HtmlFileWorker{outputDir: fEliseOutputDir, splitCnt: fEliseSplitCnt, ext: ".json"})
-	tlm.FeedLine()
-	tlm.Wait()
+	lp := &PicWorker{}
+	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, lp, fileproc.DummyWrapper())
+	fp.ProcPath(fEliseInPath, fEliseOutputDir, ".json")
 
 	return nil
 }

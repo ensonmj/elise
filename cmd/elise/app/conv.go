@@ -31,13 +31,13 @@ func init() {
 	flags.IntVarP(&fConvField, "field", "f", 2, "nth field for conversion, index start from 1")
 }
 
-type LineWorker struct {
+type convProcessor struct {
 	tmplSafe bool
 	textTmpl *text.Template
 	htmlTmpl *html.Template
 }
 
-func (w *LineWorker) Process(line []byte) []byte {
+func (w *convProcessor) Process(line []byte) []byte {
 	fields := bytes.Split(line, []byte(fConvDelim))
 	if len(fields) < fConvField {
 		return nil
@@ -58,8 +58,8 @@ func (w *LineWorker) Process(line []byte) []byte {
 	return buf.Bytes()
 }
 
-func NewLineWorker(tmplSafe bool) *LineWorker {
-	w := &LineWorker{tmplSafe: tmplSafe}
+func newConvProcessor(tmplSafe bool) *convProcessor {
+	w := &convProcessor{tmplSafe: tmplSafe}
 
 	if w.tmplSafe {
 		tmpl, err := initHtmlTmpl(fConvDevMode, fConvTmplFile)
@@ -78,28 +78,28 @@ func NewLineWorker(tmplSafe bool) *LineWorker {
 	return w
 }
 
-type FileWorker struct {
+type tmplWrapper struct {
 	tmplSafe bool
 	textTmpl *text.Template
 	htmlTmpl *html.Template
 }
 
-func (w *FileWorker) BeforeWrite(f *os.File) error {
+func (w *tmplWrapper) BeforeWrite(f *os.File) error {
 	if w.tmplSafe {
 		return w.htmlTmpl.ExecuteTemplate(f, "header", nil)
 	}
 	return w.textTmpl.ExecuteTemplate(f, "header", nil)
 }
 
-func (w *FileWorker) AfterWrite(f *os.File) error {
+func (w *tmplWrapper) AfterWrite(f *os.File) error {
 	if w.tmplSafe {
 		return w.htmlTmpl.ExecuteTemplate(f, "footer", nil)
 	}
 	return w.textTmpl.ExecuteTemplate(f, "footer", nil)
 }
 
-func NewFileWorker(tmplSafe bool) *FileWorker {
-	w := &FileWorker{tmplSafe: tmplSafe}
+func newTmplWrapper(tmplSafe bool) *tmplWrapper {
+	w := &tmplWrapper{tmplSafe: tmplSafe}
 
 	if w.tmplSafe {
 		tmpl, err := initHtmlTmpl(fConvDevMode, fConvTmplFile)
@@ -128,12 +128,13 @@ var ConvCmd = &cobra.Command{
 }
 
 func conv() error {
-	lp := NewLineWorker(fConvTmplSafe)
-	fw := NewFileWorker(fConvTmplSafe)
+	lp := newConvProcessor(fConvTmplSafe)
+	fw := newTmplWrapper(fConvTmplSafe)
+	if fEliseInPath == "-" {
+		return fileproc.ProcTerm(fEliseParallel, lp, fw)
+	}
 	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, lp, fw)
-	fp.ProcPath(fEliseInPath, fEliseOutputDir, fConvFileExt)
-
-	return nil
+	return fp.ProcPath(fEliseInPath, fEliseOutputDir, fConvFileExt)
 }
 
 func initTextTmpl(devMode bool, filePath string) (*text.Template, error) {

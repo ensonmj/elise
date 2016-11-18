@@ -88,9 +88,9 @@ type PicDesc struct {
 	SGSlice ScoredGrpSlice
 }
 
-type PicWorker struct{}
+type picProcessor struct{}
 
-func (w *PicWorker) Process(line []byte) []byte {
+func (w *picProcessor) Process(line []byte) []byte {
 	fields := bytes.Split(line, []byte(fPicDelim))
 	if len(fields) < fPicField {
 		return nil
@@ -135,11 +135,13 @@ represent the webpage according to web structure and something else.`,
 }
 
 func pic() error {
-	lp := &PicWorker{}
-	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, lp, fileproc.DummyWrapper())
-	fp.ProcPath(fEliseInPath, fEliseOutputDir, ".json")
-
-	return nil
+	lp := &picProcessor{}
+	fw := fileproc.DummyWrapper()
+	if fEliseInPath == "-" {
+		return fileproc.ProcTerm(fEliseParallel, lp, fw)
+	}
+	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, lp, fw)
+	return fp.ProcPath(fEliseInPath, fEliseOutputDir, ".json")
 }
 
 func parseDoc(doc *goquery.Document, origLP, lp string) (*PicDesc, error) {

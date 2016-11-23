@@ -37,7 +37,7 @@ type convProcessor struct {
 	htmlTmpl *html.Template
 }
 
-func (w *convProcessor) Process(line []byte) []byte {
+func (w *convProcessor) Map(line []byte) []byte {
 	fields := bytes.Split(line, []byte(fConvDelim))
 	if len(fields) < fConvField {
 		return nil
@@ -128,12 +128,12 @@ var ConvCmd = &cobra.Command{
 }
 
 func conv() error {
-	lp := newConvProcessor(fConvTmplSafe)
+	m := newConvProcessor(fConvTmplSafe)
 	fw := newTmplWrapper(fConvTmplSafe)
 	if fEliseInPath == "-" {
-		return fileproc.ProcTerm(fEliseParallel, lp, fw)
+		return fileproc.ProcTerm(fEliseParallel, m, nil, fw)
 	}
-	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, lp, fw)
+	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, m, nil, fw)
 	return fp.ProcPath(fEliseInPath, fEliseOutputDir, fConvFileExt)
 }
 

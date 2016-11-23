@@ -90,7 +90,7 @@ type PicDesc struct {
 
 type picProcessor struct{}
 
-func (w *picProcessor) Process(line []byte) []byte {
+func (w *picProcessor) Map(line []byte) []byte {
 	fields := bytes.Split(line, []byte(fPicDelim))
 	if len(fields) < fPicField {
 		return nil
@@ -135,12 +135,12 @@ represent the webpage according to web structure and something else.`,
 }
 
 func pic() error {
-	lp := &picProcessor{}
+	m := &picProcessor{}
 	fw := fileproc.DummyWrapper()
 	if fEliseInPath == "-" {
-		return fileproc.ProcTerm(fEliseParallel, lp, fw)
+		return fileproc.ProcTerm(fEliseParallel, m, nil, fw)
 	}
-	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, lp, fw)
+	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, m, nil, fw)
 	return fp.ProcPath(fEliseInPath, fEliseOutputDir, ".json")
 }
 

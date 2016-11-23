@@ -1,7 +1,6 @@
 package app
 
 import (
-	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 

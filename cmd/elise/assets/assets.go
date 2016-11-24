@@ -3025,13 +3025,13 @@ EzsHklKGV5K8auFwfpxXUei+YJaTKGw/lbsi+y8AAP//feh5Y2ALAAA=
 
 	"/assets/templates/tsv.tmpl": {
 		local:   "assets/templates/tsv.tmpl",
-		size:    307,
-		modtime: 1479375342,
+		size:    275,
+		modtime: 1479868895,
 		compressed: `
-H4sIAAAJbogA/2yQzUrEQBCEz8lTFLM5umP0KJu9yoKgEO8SMp1Jw+SHyeAutP3uktUgwp66oKpovhJx
-1PFIMD01jqLBXjUPczZF9mHOEqdA2cxtLkKjU83/Gpxo+MmL2Jc31UzEvkb2m35fy1d55tSDR0cX2Pq5
-DtwSSpjT4E+JhsWoihShWRKeKgQaYfGFxjnsH1YrNqMnoOA7FJ9rxKoeePBYYlsZEVvHVtXgzC71lXks
-y/lijod7HvxRhDuEhIJx/aC6+9j9wvw/NxC7aUrbKJv7HQAA//+keQisMwEAAA==
+H4sIAAAJbogA/2xPwUrFMBA8t18x9PXoC3oVPMsDQaHeJTTbvIU0LXmLCuv+u6RaRHinGXZmlhnVQBNn
+QncmH6h0OJq1aW2WwjGtjbAkalYeW1XKwaz9S7DQ/ONXdU8vZo2qey4cd/5awxv9YDmDc6BPuOFxSDwS
+btGd5ngSmi+dmWqf/EVw/4BEGQ5f8CHgeFel4nMkoOcb9O/V4urVDWWsyBOSoGdsH8wOb4ffsv/hyoRp
+WWQfvavfAQAA///vtHLYEwEAAA==
 `,
 	},
 

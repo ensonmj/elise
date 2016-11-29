@@ -44,7 +44,9 @@ func (w *convProcessor) Map(line []byte) []byte {
 	}
 
 	var data interface{}
-	if err := json.Unmarshal(fields[fConvField-1], &data); err != nil {
+	d := json.NewDecoder(bytes.NewReader(fields[fConvField-1]))
+	d.UseNumber()
+	if err := d.Decode(&data); err != nil {
 		return nil
 	}
 
@@ -143,12 +145,18 @@ func initTextTmpl(devMode bool, filePath string) (*text.Template, error) {
 		return nil, err
 	}
 	return text.New("tmpl").Funcs(text.FuncMap{
-		"add": add,
+		"add":     add,
+		"marshal": marshal,
 	}).Parse(tmplStr)
 }
 
 func add(a, b int) int {
 	return a + b
+}
+
+func marshal(v interface{}) html.JS {
+	data, _ := json.Marshal(v)
+	return html.JS(data)
 }
 
 func initHtmlTmpl(devMode bool, filePath string) (*html.Template, error) {

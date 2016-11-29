@@ -1,117 +1,117 @@
 {{define "header" -}}
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset>
-{{end}}
+{{- end}}
 
-{{define "item" -}}
+{{define "item"}}
     <url>
-        <loc>{{.URL}}</loc>
+        <loc><![CDATA[ {{.URL}} ]]></loc>
         <data>
-            <name>{{.Name}}</name>
-            <outerID>{{.OuterID}}</outerID>
+            <name><![CDATA[ {{.Name}} ]]></name>
+            <outerId><![CDATA[ {{.OuterID}} ]]></outerId>
             {{- if .SellerName}}
-            <sellerName>{{.SellerName}}</sellerName>
+            <sellerName><![CDATA[ {{.SellerName}} ]]></sellerName>
             {{- end}}
             {{- if .SellerSite}}
-                <sellerSiteUrl>{{.SellerSite}}</sellerSiteUrl>
+                <sellerSiteUrl><![CDATA[ {{.SellerSite}} ]]></sellerSiteUrl>
             {{- end}}
             {{- if .Logo }}
-            <logo>{{.Logo}}</logo>
+            <logo><![CDATA[ {{.Logo}} ]]></logo>
             {{- end}}
             {{- if .Title}}
-            <title>{{.Title}}</title>
+            <title><![CDATA[ {{.Title}} ]]></title>
             {{- end}}
             {{- if .Image}}
-            <image>{{.Image}}</image>
+            <image><![CDATA[ {{.Image}} ]]></image>
             {{- end}}
             {{- if .MoreImages}}
             <moreImages>
                 {{- range .MoreImages}}
-                <img index="{{.Index}}">{{.URL}}</img>
+                <img index="{{.Index}}"><![CDATA[ {{.URL}} ]]></img>
                 {{- end}}
             </moreImages>
             {{- end}}
             {{- if .Price}}
-            <price>{{.Price}}</price>
+            <price><![CDATA[ {{.Price}} ]]></price>
             {{- end}}
             {{- if .Value}}
-            <value>{{.Value}}</value>
+            <value><![CDATA[ {{.Value}} ]]></value>
             {{- end}}
             {{- if .Saving}}
-            <saving>{{.Saving}}</saving>
+            <saving><![CDATA[ {{.Saving}} ]]></saving>
             {{- end}}
             {{- if .Promotion}}
-            <promotion>{{.Promotion}}</promotion>
+            <promotion><![CDATA[ {{.Promotion}} ]]></promotion>
             {{- end}}
             {{- if .RemainingDays}}
-            <remainingDays>{{.RemainingDays}}</remainingDays>
+            <remainingDays><![CDATA[ {{.RemainingDays}} ]]></remainingDays>
             {{- end}}
             {{- if .Brand}}
-            <brand>{{.Brand}}</brand>
+            <brand><![CDATA[ {{.Brand}} ]]></brand>
             {{- end}}
             {{- if .BrandURL}}
-            <brandUrl>{{.BrandURL}}</brandUrl>
+            <brandUrl><![CDATA[ {{.BrandURL}} ]]></brandUrl>
             {{- end}}
             {{- if .TargetURL}}
-            <targetUrl>{{.TargetURL}}</targetUrl>
+            <targetUrl><![CDATA[ {{.TargetURL}} ]]></targetUrl>
             {{- end}}
             {{- if .Category}}
-            <category>{{.Category}}</category>
+            <category><![CDATA[ {{.Category}} ]]></category>
             {{- end}}
             {{- if .SubCategory}}
-            <subCategory>{{.SubCategory}}</subCategory>
+            <subCategory><![CDATA[ {{.SubCategory}} ]]></subCategory>
             {{- end}}
             {{- if .ThirdCategory}}
-            <thirdCategory>{{.ThirdCategory}}</thirdCategory>
+            <thirdCategory><![CDATA[ {{.ThirdCategory}} ]]></thirdCategory>
             {{- end}}
             {{- if .FourthCategory}}
-            <fourthCategory>{{.FourthCategory}}</fourthCategory>
+            <fourthCategory><![CDATA[ {{.FourthCategory}} ]]></fourthCategory>
             {{- end}}
             {{- if .CategoryURL}}
-            <categoryUrl>{{.CategoryURL}}</categoryUrl>
+            <categoryUrl><![CDATA[ {{.CategoryURL}} ]]></categoryUrl>
             {{- end}}
             {{- if .SubCategoryURL}}
-            <subCategoryUrl>{{.SubCategoryURL}}</subCategoryUrl>
+            <subCategoryUrl><![CDATA[ {{.SubCategoryURL}} ]]></subCategoryUrl>
             {{- end}}
             {{- if .ThirdCategoryURL}}
-            <thirdCategoryUrl>{{.ThirdCategoryURL}}</thirdCategoryUrl>
+            <thirdCategoryUrl><![CDATA[ {{.ThirdCategoryURL}} ]]></thirdCategoryUrl>
             {{- end}}
             {{- if .FourthCategoryURL}}
-            <fourthCategoryUrl>{{.FourthCategoryURL}}</fourthCategoryUrl>
+            <fourthCategoryUrl><![CDATA[ {{.FourthCategoryURL}} ]]></fourthCategoryUrl>
             {{- end}}
             {{- if .StartTime}}
-            <startTime>{{.StartTime}}</startTime>
+            <startTime><![CDATA[ {{.StartTime}} ]]></startTime>
             {{- end}}
             {{- if .EndTime}}
-            <endTime>{{.EndTime}}</endTime>
+            <endTime><![CDATA[ {{.EndTime}} ]]></endTime>
             {{- end}}
             {{- if .Model}}
-            <model>{{.Model}}</model>
+            <model><![CDATA[ {{.Model}} ]]></model>
             {{- end}}
             {{- if .Services}}
-            <services>{{.Services}}</services>
+            <services><![CDATA[ {{.Services}} ]]></services>
             {{- end}}
             {{- if .Tags}}
-            <tags>{{.Tags}}</tags>
+            <tags><![CDATA[ {{.Tags}} ]]></tags>
             {{- end}}
             {{- if .Availability}}
-            <availability>{{.Availability}}</availability>
+            <availability><![CDATA[ {{.Availability}} ]]></availability>
             {{- end}}
             {{- if .Stock}}
-            <stock>{{.Stock}}</stock>
+            <stock><![CDATA[ {{.Stock}} ]]></stock>
             {{- end}}
             {{- if .Bought}}
-            <bought>{{.Bought}}</bought>
+            <bought><![CDATA[ {{.Bought}} ]]></bought>
             {{- end}}
             {{- if .TargetRegion}}
-            <targetRegion>{{.TargetRegion}}</targetRegion>
+            <targetRegion><![CDATA[ {{.TargetRegion}} ]]></targetRegion>
             {{- end}}
             {{- if .Attrs}}
             <choice>
                 {{- range .Attrs}}
                 <attribute>
-                    <key>{{.Key}}</key>
-                    <value>{{.Value}}</value>
+                    <key><![CDATA[ {{.Key}} ]]></key>
+                    <value><![CDATA[ {{marshal .Value}} ]]></value>
                 </attribute>
                 {{- end}}
             </choice>

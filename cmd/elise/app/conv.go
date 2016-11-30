@@ -7,6 +7,7 @@ import (
 	"os"
 	text "text/template"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/ensonmj/elise/cmd/elise/assets"
 	"github.com/ensonmj/fileproc"
 	"github.com/spf13/cobra"
@@ -136,7 +137,14 @@ func conv() error {
 		return fileproc.ProcTerm(fEliseParallel, m, nil, fw)
 	}
 	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, m, nil, fw)
-	return fp.ProcPath(fEliseInPath, fEliseOutputDir, fConvFileExt)
+	err := fp.ProcPath(fEliseInPath, fEliseOutputDir, fConvFileExt)
+	i, mc, r := fp.Stat()
+	logrus.WithFields(logrus.Fields{
+		"inputLineCnt": i,
+		"mapOutCnt":    mc,
+		"redOutCnt":    r,
+	}).Debug("Finished all work")
+	return err
 }
 
 func initTextTmpl(devMode bool, filePath string) (*text.Template, error) {

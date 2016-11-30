@@ -141,7 +141,14 @@ func pic() error {
 		return fileproc.ProcTerm(fEliseParallel, m, nil, fw)
 	}
 	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, m, nil, fw)
-	return fp.ProcPath(fEliseInPath, fEliseOutputDir, ".json")
+	err := fp.ProcPath(fEliseInPath, fEliseOutputDir, ".json")
+	i, mc, r := fp.Stat()
+	log.WithFields(log.Fields{
+		"inputLineCnt": i,
+		"mapOutCnt":    mc,
+		"redOutCnt":    r,
+	}).Debug("Finished all work")
+	return err
 }
 
 func parseDoc(doc *goquery.Document, origLP, lp string) (*PicDesc, error) {

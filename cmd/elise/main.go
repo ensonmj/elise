@@ -1,6 +1,7 @@
 package main
 
 //go:generate esc -pkg=assets -ignore=(swp|go)$DOLLAR -o=assets/assets.go assets
+//go:generate esc -pkg=conf -ignore=(swp|go)$DOLLAR -o=conf/conf.go conf
 
 import (
 	"net/http"

@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/ensonmj/elise/cmd/elise/conf"
 	"github.com/sclevine/agouti"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -60,10 +62,12 @@ var CrawlCmd = &cobra.Command{
 			}).Fatal("No script dir")
 			return err
 		}
-		viper.AddConfigPath("./conf")
-		viper.SetConfigName("config")
-		//viper.WatchConfig() // watching and re-reading config file
-		err := viper.ReadInConfig()
+		data, err := conf.FSByte(fEliseDevMode, "/conf/crawl.yml")
+		if err != nil {
+			return err
+		}
+		viper.SetConfigType("yml")
+		err = viper.ReadConfig(bytes.NewReader(data))
 		if err != nil {
 			return err
 		}

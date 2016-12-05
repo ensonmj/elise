@@ -14,7 +14,6 @@ import (
 )
 
 var (
-	fConvDevMode  bool
 	fConvTmplSafe bool
 	fConvTmplFile string
 	fConvFileExt  string
@@ -24,7 +23,6 @@ var (
 
 func init() {
 	flags := ConvCmd.Flags()
-	flags.BoolVarP(&fConvDevMode, "devMode", "D", false, "develop mode, using local assets")
 	flags.BoolVarP(&fConvTmplSafe, "tmplSafe", "s", false, "safe mode, using html/template or text/template")
 	flags.StringVarP(&fConvTmplFile, "tmplFile", "t", "/assets/templates/conv.tmpl", "template file")
 	flags.StringVarP(&fConvFileExt, "fileExt", "e", ".xml", "output file extension")
@@ -65,7 +63,7 @@ func newConvProcessor(tmplSafe bool) *convProcessor {
 	w := &convProcessor{tmplSafe: tmplSafe}
 
 	if w.tmplSafe {
-		tmpl, err := initHtmlTmpl(fConvDevMode, fConvTmplFile)
+		tmpl, err := initHtmlTmpl(fEliseDevMode, fConvTmplFile)
 		if err != nil {
 			return nil
 		}
@@ -73,7 +71,7 @@ func newConvProcessor(tmplSafe bool) *convProcessor {
 		return w
 	}
 
-	tmpl, err := initTextTmpl(fConvDevMode, fConvTmplFile)
+	tmpl, err := initTextTmpl(fEliseDevMode, fConvTmplFile)
 	if err != nil {
 		return nil
 	}
@@ -105,7 +103,7 @@ func newTmplWrapper(tmplSafe bool) *tmplWrapper {
 	w := &tmplWrapper{tmplSafe: tmplSafe}
 
 	if w.tmplSafe {
-		tmpl, err := initHtmlTmpl(fConvDevMode, fConvTmplFile)
+		tmpl, err := initHtmlTmpl(fEliseDevMode, fConvTmplFile)
 		if err != nil {
 			return nil
 		}
@@ -113,7 +111,7 @@ func newTmplWrapper(tmplSafe bool) *tmplWrapper {
 		return w
 	}
 
-	tmpl, err := initTextTmpl(fConvDevMode, fConvTmplFile)
+	tmpl, err := initTextTmpl(fEliseDevMode, fConvTmplFile)
 	if err != nil {
 		return nil
 	}

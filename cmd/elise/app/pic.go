@@ -15,9 +15,11 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	log "github.com/Sirupsen/logrus"
+	"github.com/ensonmj/elise/cmd/elise/conf"
 	"github.com/ensonmj/elise/htmlutil"
 	"github.com/ensonmj/fileproc"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/yosssi/gohtml"
 	"golang.org/x/net/html"
 )
@@ -88,7 +90,10 @@ type PicDesc struct {
 	SGSlice ScoredGrpSlice
 }
 
-type picProcessor struct{}
+type picProcessor struct {
+	blackWords []string
+	presuffix  string
+}
 
 func (w *picProcessor) Map(line []byte) []byte {
 	fields := bytes.Split(line, []byte(fPicDelim))
@@ -106,7 +111,7 @@ func (w *picProcessor) Map(line []byte) []byte {
 	}
 	origLP := string(fields[0])
 	lp := resp.LandingPage
-	picDesc, err := parseDoc(doc, origLP, lp)
+	picDesc, err := parseDoc(doc, origLP, lp, w.blackWords, w.presuffix)
 	if err != nil {
 		return nil
 	}
@@ -129,6 +134,18 @@ var PicCmd = &cobra.Command{
 	Short: "Use pictures to describe the webpage.",
 	Long: `Check all pictures in the webpage, find the pictures which can best
 represent the webpage according to web structure and something else.`,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		data, err := conf.FSByte(fEliseDevMode, "/conf/pic.yml")
+		if err != nil {
+			return err
+		}
+		viper.SetConfigType("yml")
+		err = viper.ReadConfig(bytes.NewReader(data))
+		if err != nil {
+			return err
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return pic()
 	},
@@ -136,6 +153,12 @@ represent the webpage according to web structure and something else.`,
 
 func pic() error {
 	m := &picProcessor{}
+	if viper.IsSet("black_words_in_title") {
+		m.blackWords = append(m.blackWords, viper.GetStringSlice("black_words_in_title")...)
+	}
+	if viper.IsSet("post_trim_prefix_suffix") {
+		m.presuffix = viper.GetString("post_trim_prefix_suffix")
+	}
 	fw := fileproc.DummyWrapper()
 	if fEliseInPath == "-" {
 		return fileproc.ProcTerm(fEliseParallel, m, nil, fw)
@@ -151,8 +174,13 @@ func pic() error {
 	return err
 }
 
-func parseDoc(doc *goquery.Document, origLP, lp string) (*PicDesc, error) {
-	title := normalizeTitle(doc.Find("title").Text())
+func parseDoc(doc *goquery.Document, origLP, lp string, words []string, presuffix string) (*PicDesc, error) {
+	origTitle := doc.Find("title").Text()
+	title := normalizeTitle(origTitle, words, presuffix)
+	if len(title) <= 0 {
+		log.WithField("origTitle", origTitle).Debug("Empty title after normalization")
+		return nil, errors.New("empty title")
+	}
 
 	trimHTML(doc)
 	if err := normalizeHTML(doc, lp); err != nil {
@@ -185,13 +213,18 @@ func parseDoc(doc *goquery.Document, origLP, lp string) (*PicDesc, error) {
 	return picDesc, nil
 }
 
-func normalizeTitle(title string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsSpace(r) || unicode.IsControl(r) {
+func normalizeTitle(title string, words []string, presuffix string) string {
+	for _, word := range words {
+		title = strings.Replace(title, word, "", -1)
+	}
+	title = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
 			return -1
 		}
 		return r
 	}, title)
+	title = strings.Trim(title, presuffix)
+	return title
 }
 
 // trim some node according selector

@@ -18,6 +18,7 @@ var (
 	fEliseInPath    string
 	fEliseOutputDir string
 	fEliseSplitCnt  int
+	fEliseDevMode   bool
 )
 
 func init() {
@@ -35,6 +36,7 @@ func init() {
 	pflags.StringVarP(&fEliseInPath, "inPath", "p", "-", "file or dir for input, '-' stands for term")
 	pflags.StringVarP(&fEliseOutputDir, "outputDir", "O", "./output", "dir for storage result files")
 	pflags.IntVarP(&fEliseSplitCnt, "splitCount", "c", 1000, "max line count for one output file")
+	pflags.BoolVarP(&fEliseDevMode, "devMode", "D", false, "develop mode, use local files which not embeded in binary")
 }
 
 var EliseCmd = &cobra.Command{

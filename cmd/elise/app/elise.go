@@ -11,14 +11,15 @@ import (
 )
 
 var (
-	fEliseParallel  int
-	fEliseVerbose   int
-	fEliseLogDir    string
-	fEliseFlushLog  bool
-	fEliseInPath    string
-	fEliseOutputDir string
-	fEliseSplitCnt  int
-	fEliseDevMode   bool
+	fEliseParallel   int
+	fEliseVerbose    int
+	fEliseLogDir     string
+	fEliseFlushLog   bool
+	fEliseInPath     string
+	fEliseOutputDir  string
+	fEliseSplitCnt   int
+	fEliseDevMode    bool
+	fEliseBufMaxSize int
 )
 
 func init() {
@@ -37,6 +38,7 @@ func init() {
 	pflags.StringVarP(&fEliseOutputDir, "outputDir", "O", "./output", "dir for storage result files")
 	pflags.IntVarP(&fEliseSplitCnt, "splitCount", "c", 1000, "max line count for one output file")
 	pflags.BoolVarP(&fEliseDevMode, "devMode", "D", false, "develop mode, use local files which not embeded in binary")
+	pflags.IntVarP(&fEliseBufMaxSize, "maxSize", "S", 16, "buffer max size for scanner, in Mega byte")
 }
 
 var EliseCmd = &cobra.Command{

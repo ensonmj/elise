@@ -132,9 +132,9 @@ func conv() error {
 	m := newConvProcessor(fConvTmplSafe)
 	fw := newTmplWrapper(fConvTmplSafe)
 	if fEliseInPath == "-" {
-		return fileproc.ProcTerm(fEliseParallel, m, nil, fw)
+		return fileproc.ProcTerm(fEliseParallel, fEliseBufMaxSize, m, nil, fw)
 	}
-	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, false, m, nil, fw)
+	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseBufMaxSize, fEliseSplitCnt, true, false, m, nil, fw)
 	err := fp.ProcPath(fEliseInPath, fEliseOutputDir, fConvFileExt)
 	i, mc, r := fp.Stat()
 	logrus.WithFields(logrus.Fields{

@@ -161,9 +161,9 @@ func pic() error {
 	}
 	fw := fileproc.DummyWrapper()
 	if fEliseInPath == "-" {
-		return fileproc.ProcTerm(fEliseParallel, m, nil, fw)
+		return fileproc.ProcTerm(fEliseParallel, fEliseBufMaxSize, m, nil, fw)
 	}
-	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, false, m, nil, fw)
+	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseBufMaxSize, fEliseSplitCnt, true, false, m, nil, fw)
 	err := fp.ProcPath(fEliseInPath, fEliseOutputDir, ".json")
 	i, mc, r := fp.Stat()
 	log.WithFields(log.Fields{

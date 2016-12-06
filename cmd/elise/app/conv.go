@@ -134,7 +134,7 @@ func conv() error {
 	if fEliseInPath == "-" {
 		return fileproc.ProcTerm(fEliseParallel, m, nil, fw)
 	}
-	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, m, nil, fw)
+	fp := fileproc.NewFileProcessor(fEliseParallel, fEliseSplitCnt, true, false, m, nil, fw)
 	err := fp.ProcPath(fEliseInPath, fEliseOutputDir, fConvFileExt)
 	i, mc, r := fp.Stat()
 	logrus.WithFields(logrus.Fields{

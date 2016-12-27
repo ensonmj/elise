@@ -62,6 +62,12 @@ var CrawlCmd = &cobra.Command{
 			}).Fatal("No script dir")
 			return err
 		}
+		if _, err := os.Stat(fEliseInPath); os.IsNotExist(err) {
+			log.WithFields(log.Fields{
+				"dataDir": fEliseInPath,
+			}).Fatal("No data dir")
+			return err
+		}
 		data, err := conf.FSByte(fEliseDevMode, "/conf/crawl.yml")
 		if err != nil {
 			return err

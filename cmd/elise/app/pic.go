@@ -183,11 +183,6 @@ func parseDoc(doc *goquery.Document, origLP, lp string, words []string, presuffi
 	}
 
 	trimHTML(doc)
-	if err := normalizeHTML(doc, lp); err != nil {
-		log.WithError(err).Debug("Failed to normalize HTML")
-		return nil, err
-	}
-	trimBranch(doc)
 	if fOTrim {
 		str, _ := doc.Html()
 		fmt.Printf("%s\037%s\036\n", lp, gohtml.Format(str))
@@ -199,7 +194,7 @@ func parseDoc(doc *goquery.Document, origLP, lp string, words []string, presuffi
 		return nil, errors.New("empty HTML body")
 	}
 
-	picDesc := sortTree(tree)
+	picDesc := sortTree(tree, lp)
 	if picDesc == nil {
 		log.Debug("Empty PicDesc")
 		return nil, errors.New("Empty PicDesc")
@@ -227,70 +222,18 @@ func normalizeTitle(title string, words []string, presuffix string) string {
 	return title
 }
 
-// trim some node according selector
 func trimHTML(doc *goquery.Document) {
+	trimNode(doc)
+	trimBranch(doc)
+}
+
+// trim some node according selector
+func trimNode(doc *goquery.Document) {
 	for _, selector := range []string{"head", "header", "footer", "aside",
 		"script", "noscript", "style", "object", "iframe", "form", "input", "pre", "code",
 		"nav", "a", "p", "span", "h1", "h2", "h3", "h4", "h5", "h6", "strong", "em"} {
 		doc.Find(selector).Remove()
 	}
-}
-
-func normalizeHTML(doc *goquery.Document, lpSrc string) error {
-	num := 0
-	doc.Find("img").Each(func(i int, sel *goquery.Selection) {
-		for _, n := range sel.Nodes {
-			var imgSrc string
-			for _, attr := range n.Attr {
-				if attr.Key == "data-src" || attr.Key == "data-original" {
-					imgSrc = attr.Val
-					break
-				} else if attr.Key == "src" {
-					imgSrc = attr.Val
-				}
-			}
-			if imgSrc == "" {
-				var buf bytes.Buffer
-				html.Render(&buf, n)
-				log.WithFields(log.Fields{
-					"lpSrc": lpSrc,
-					"node":  n,
-					"HTML":  buf.String(),
-				}).Debug("Can't find img src while normalizing")
-				continue
-			}
-
-			lpURL, err := url.Parse(lpSrc)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"lpSrc": lpSrc,
-					"err":   err,
-				}).Debug("Failed to parse landing page url")
-				continue
-			}
-			imgURL, err := url.Parse(imgSrc)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"imgSrc": imgSrc,
-					"err":    err,
-				}).Debug("Failed to parse img url")
-				continue
-			}
-
-			absoluteImgSrc := lpURL.ResolveReference(imgURL).String()
-			n.Attr = append(n.Attr, html.Attribute{Key: "prim-img", Val: absoluteImgSrc})
-			log.WithFields(log.Fields{
-				"absoluteImgSrc": absoluteImgSrc,
-			}).Debug("Got img src")
-
-			num++
-		}
-	})
-
-	if num <= 0 {
-		return errors.New("can't find any image node")
-	}
-	return nil
 }
 
 // trim branch which not include img node or unqualified img
@@ -339,10 +282,18 @@ func leafEqual(c, n *html.Node) bool {
 	return true
 }
 
-func sortTree(tree []*html.Node) *PicDesc {
+func sortTree(tree []*html.Node, lpSrc string) *PicDesc {
+	lpURL, err := url.Parse(lpSrc)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"lpSrc": lpSrc,
+			"err":   err,
+		}).Warn("Failed to parse landing page url")
+		return nil
+	}
 	var sgs ScoredGrpSlice
 	for _, n := range tree {
-		sg := calcScore(n)
+		sg := calcScore(n, lpURL)
 		if sg.Score < 1 {
 			log.WithField("score", sg.Score).Debug("Score too low")
 			continue
@@ -358,8 +309,8 @@ func sortTree(tree []*html.Node) *PicDesc {
 	return &PicDesc{SGSlice: sgs}
 }
 
-func calcScore(n *html.Node) ScoredGrp {
-	imgItems := extractImg(n)
+func calcScore(n *html.Node, lpURL *url.URL) ScoredGrp {
+	imgItems := extractImg(n, lpURL)
 	if len(imgItems) < fImgNumMin {
 		log.WithFields(log.Fields{
 			"num":    len(imgItems),
@@ -375,7 +326,7 @@ func calcScore(n *html.Node) ScoredGrp {
 // a--..--b--c--...--img
 //         \
 //          c--...--img
-func extractImg(n *html.Node) []ImgItem {
+func extractImg(n *html.Node, lpURL *url.URL) []ImgItem {
 	for n.FirstChild.Data != "img" && n.FirstChild.NextSibling == nil {
 		n = n.FirstChild
 	}
@@ -384,8 +335,8 @@ func extractImg(n *html.Node) []ImgItem {
 		for curr.Data != "img" {
 			curr = curr.FirstChild
 		}
-		img := normalizeImg(curr)
-		if filterImg(img) {
+		img, err := normalizeImg(curr, lpURL)
+		if err != nil || filterImg(img) {
 			continue
 		}
 		imgItems = append(imgItems, img)
@@ -438,10 +389,15 @@ func extractImg(n *html.Node) []ImgItem {
 	return imgItems
 }
 
-func normalizeImg(n *html.Node) ImgItem {
+func normalizeImg(n *html.Node, lpURL *url.URL) (ImgItem, error) {
+	var imgSrc, lazyImgSrc string
 	var img ImgItem
 	for _, attr := range n.Attr {
 		switch attr.Key {
+		case "data-original", "data-src": // suppose they don't coexist
+			lazyImgSrc = attr.Val
+		case "src":
+			imgSrc = attr.Val
 		case "prim-top", "prim_top":
 			img.Top, _ = strconv.ParseFloat(attr.Val, 64)
 		case "prim-left", "prim_left":
@@ -450,21 +406,48 @@ func normalizeImg(n *html.Node) ImgItem {
 			img.Width, _ = strconv.ParseFloat(attr.Val, 64)
 		case "prim-height", "prim_height":
 			img.Height, _ = strconv.ParseFloat(attr.Val, 64)
-		case "prim-img":
-			img.Src = attr.Val
 		}
 	}
+
+	if lazyImgSrc != "" && imgSrc != lazyImgSrc {
+		// image not loaded, we may get wrong size
+		log.WithFields(log.Fields{
+			"lazyImgSrc": lazyImgSrc,
+			"imgSrc":     imgSrc,
+			"width":      img.Width,
+			"height":     img.Height,
+		}).Debug("Ignore image which was not loaded")
+		return img, errors.New("ignore image which was not loaded")
+	}
+	if imgSrc == "" {
+		var buf bytes.Buffer
+		html.Render(&buf, n)
+		log.WithFields(log.Fields{
+			"node": n,
+			"HTML": buf.String(),
+		}).Debug("Can't find img src")
+		return img, errors.New("can't find img src")
+	}
+
+	imgURL, err := url.Parse(imgSrc)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"imgSrc": imgSrc,
+			"err":    err,
+		}).Debug("Failed to parse img url")
+		return img, errors.New("failed to parse img url")
+	}
+
+	img.Src = lpURL.ResolveReference(imgURL).String()
 	img.Ratio = img.Width / img.Height
 	log.WithField("imgItem", img).Debug("Normalize image")
-	return img
+
+	return img, nil
 }
 
 func filterImg(img ImgItem) bool {
-	if filterImgbyRect(img) {
-		return true
-	}
-
-	return filterImgbyExt(img)
+	return filterImgbyRect(img) ||
+		filterImgbyExt(img)
 }
 
 func filterImgbyRect(img ImgItem) bool {

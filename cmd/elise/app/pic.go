@@ -361,7 +361,10 @@ func sortTree(tree []*html.Node) *PicDesc {
 func calcScore(n *html.Node) ScoredGrp {
 	imgItems := extractImg(n)
 	if len(imgItems) < fImgNumMin {
-		log.WithField("num", len(imgItems)).Debug("Image num under threshold")
+		log.WithFields(log.Fields{
+			"num":    len(imgItems),
+			"minNum": fImgNumMin,
+		}).Info("Image num under threshold")
 		return ScoredGrp{Score: 0}
 	}
 	return ScoredGrp{Score: len(imgItems), ImgItems: imgItems}
@@ -387,10 +390,11 @@ func extractImg(n *html.Node) []ImgItem {
 		}
 		imgItems = append(imgItems, img)
 	}
+	length := len(imgItems)
+	log.WithField("num", length).Debug("Extract all valid img")
 
 	// remove duplicates
 	uniq := make(map[string]bool)
-	length := len(imgItems)
 	var totalWidth, totalHeight, totalRatio float64
 	for i := 0; i < length; i++ {
 		if _, ok := uniq[imgItems[i].Src]; !ok {
@@ -401,10 +405,12 @@ func extractImg(n *html.Node) []ImgItem {
 			uniq[imgItems[i].Src] = true
 			continue
 		}
+		log.WithField("imgSrc", imgItems[i].Src).Info("Filtered by dedup img src")
 		imgItems = append(imgItems[:i], imgItems[i+1:]...)
 		length--
 		i--
 	}
+	log.WithField("num", length).Debug("After dedup img by src")
 	if length <= 2 {
 		return imgItems
 	}
@@ -416,12 +422,19 @@ func extractImg(n *html.Node) []ImgItem {
 	for i := 0; i < length; i++ {
 		img := imgItems[i]
 		if !imgOnAverage(img, avgWidth, avgHeight, avgRatio) {
+			log.WithFields(log.Fields{
+				"img":       img,
+				"avgWidth":  avgWidth,
+				"avgHeight": avgHeight,
+				"avgRatio":  avgRatio,
+			}).Info("Filtered by average rect")
 			imgItems = append(imgItems[:i], imgItems[i+1:]...)
 			length--
 			i--
 		}
 	}
 
+	log.WithField("num", length).Debug("After remove img not on average")
 	return imgItems
 }
 
@@ -455,21 +468,29 @@ func filterImg(img ImgItem) bool {
 }
 
 func filterImgbyRect(img ImgItem) bool {
-	width, height := img.Width, img.Height
+	width, height, ratio := img.Width, img.Height, img.Ratio
+	log.WithFields(log.Fields{
+		"width":  width,
+		"height": height,
+		"ratio":  ratio,
+	}).Debug("Get img rect")
 	if width < fWidthMin || height < fHeightMin {
 		log.WithFields(log.Fields{
-			"width":  width,
-			"height": height,
-		}).Debug("Filtered by width or height")
+			"width":     width,
+			"height":    height,
+			"minWidth":  fWidthMin,
+			"minHeight": fHeightMin,
+		}).Info("Filtered by width or height")
 		return true
 	}
-	ratio := img.Ratio
 	if ratio < fRatioMin || ratio > fRatioMax {
 		log.WithFields(log.Fields{
-			"width":  width,
-			"height": height,
-			"ratio":  ratio,
-		}).Debug("Filtered by width/height ratio")
+			"width":    width,
+			"height":   height,
+			"ratio":    ratio,
+			"minRatio": fRatioMin,
+			"maxRatio": fRatioMax,
+		}).Info("Filtered by width/height ratio")
 		return true
 	}
 
